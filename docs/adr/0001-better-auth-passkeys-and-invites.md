@@ -30,7 +30,7 @@ Better Auth's database connection runs as the `hub_auth` role (ADR 0005), which 
 - pending device sign-in → 403 `device_pending`; after a manager approves → session for the new user
 - recovery invite → new passkey for the existing user, old passkey `revoked`, no duplicate user
 
-## Consequences: deviations from `schema.md` §3
+## Consequences: deviations from the original `schema.md` §3 (now folded in)
 
 Better Auth owns the shape of `users`, `sessions` and `passkeys`. Mapped through its `modelName`/`fields` options:
 
@@ -51,4 +51,3 @@ Other consequences:
 - `sessions.passkey_id` is not populated (Better Auth doesn't pass the passkey to `createSession`). Populate it from the sign-in hook in M7, or drop the column.
 - Store `ip_hash` instead of the raw IP (Better Auth `advanced.ipAddress` options, or a session `create.before` hook), M7.
 - The sign-in and consent pages (`/sign-in`, `/consent`) and add-a-device-by-QR are UI work for M7.
-- Update `schema.md` §3 to match the table above.

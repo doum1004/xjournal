@@ -23,7 +23,7 @@
 
 ## Where the policies go beyond `schema.md` §9
 
-`schema.md` §9 is a summary; these are the interpretations made while writing the SQL. Fold them back into `schema.md` if they're accepted:
+`schema.md` §9 is a summary; these are the interpretations made while writing the SQL. They have been folded back into `schema.md` §9:
 
 - **Workspace owner:** can read every project in the workspace and add the first members of a new project (otherwise nobody could seed a project's owner row).
 - **Leaving:** a member may update their own `project_members` row (to set `left_at`) but never raise their role. The check compares against the caller's current role.

@@ -83,15 +83,18 @@ create type sync_status       as enum ('ok', 'running', 'error', 'disabled');
 
 ## 3. Identity, sign-in and tenancy
 
-The auth library (Better Auth, spec §11.5) owns the core `user`, `session` and `passkey` tables. Their names and columns follow the library's schema; the columns below are what the hub requires of them, plus the hub's own tables.
+The auth library (Better Auth, spec §11.5) owns the core `user`, `session` and `passkey` tables. Their names and columns follow the library's schema; the columns below are what the hub requires of them, plus the hub's own tables. The library also owns `accounts` (always empty: there's no password or social sign-in, but the library requires the table), `verifications`, `jwks` and the `oauth_*` tables for MCP OAuth. Their shape is the library's (`packages/db/src/schema/auth-library.ts`, ADR 0001 and 0002).
 
 ```sql
 -- People who can sign in.
 create table users (
   id               text primary key,
   display_name     text not null,
-  email            text,                          -- reference only; not used for sign-in (spec §11.5)
+  email            text unique,                   -- reference only; not used for sign-in (spec §11.5)
+  email_verified   boolean not null default false, -- required by the auth library; unused
+  image            text,                          -- required by the auth library; unused
   created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
   disabled_at      timestamptz
 );
 
@@ -162,6 +165,10 @@ create table passkeys (
   public_key       text not null,
   counter          bigint not null default 0,
   device_label     text,
+  device_type      text not null default 'singleDevice', -- library: 'singleDevice' | 'multiDevice'
+  backed_up        boolean not null default false,       -- library: synced passkey
+  transports       text,                                 -- library: comma-separated
+  aaguid           text,                                 -- library: authenticator model
   status           device_status not null default 'pending',
   approved_by      text references users(id),
   approved_at      timestamptz,
@@ -172,17 +179,20 @@ create table passkeys (
 );
 
 -- Sessions (library-owned): any hub instance can validate them (spec §11.4).
+-- The library stores the raw token and has no option to hash it. Session cookies are
+-- HMAC-signed with the server secret, so a database read alone can't forge one (ADR 0001).
 create table sessions (
   id               text primary key,
   user_id          text not null references users(id),
-  token_hash       text not null unique,
-  passkey_id       text references passkeys(id),
+  token            text not null unique,
+  passkey_id       text references passkeys(id),  -- not populated yet; M7 (ADR 0001)
   created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
   expires_at       timestamptz not null,
   last_seen_at     timestamptz,
   revoked_at       timestamptz,
   user_agent       text,
-  ip_hash          text
+  ip_address       text                           -- raw for now; to be hashed in M7 (ADR 0001)
 );
 
 -- Personal access tokens and MCP OAuth tokens (spec §11.5).
@@ -368,6 +378,7 @@ create table record_people (
 );
 
 -- Semantic search (pgvector). Rebuilt from revisions; derived, not evidence.
+-- Added in M5, once the embedding model (and so the vector size) is chosen (ADR 0005).
 create table record_embeddings (
   record_revision_id text primary key references record_revisions(id),
   workspace_id     text not null,
@@ -662,11 +673,17 @@ The job queue (pg-boss) creates and owns its own `pgboss` schema.
 
 ## 9. Row-level security
 
-The service layer sets the acting user for each transaction:
+Two `NOLOGIN` group roles, both granted to the login role in `DATABASE_URL` (ADR 0005):
+
+- `hub_app`: the service layer. No grants on library-owned auth tables, no `update` or `delete` on append-only tables, no `delete` on `records`.
+- `hub_auth`: the auth library's pool and invite redemption, which run before a user is known. It reaches only the sign-in tables, plus reading and consuming `invites`, inserting `project_members` and reading `projects`.
+
+The service layer sets the role and the acting user for each transaction (`withActor`, `packages/db/src/actor.ts`), so a pooled connection never carries one user's identity into the next request:
 
 ```sql
-set local app.user_id = '<ULID>';
-set local app.workspace_id = '<ULID>';
+set local role hub_app;
+select set_config('app.user_id', '<ULID>', true);
+select set_config('app.workspace_id', '<ULID>', true);
 ```
 
 Helpers:
@@ -676,18 +693,23 @@ create function app_uid() returns text language sql stable as
   $$ select current_setting('app.user_id', true) $$;
 
 -- The caller's role in a project, or null.
-create function app_role(p_project text) returns member_role language sql stable as $$
+create function app_role(p_project text) returns member_role
+  language sql stable security definer set search_path = public as $$
   select role from project_members
   where project_id = p_project and user_id = app_uid() and left_at is null $$;
 ```
+
+The helpers that read membership are `security definer` with a fixed `search_path`, so the `project_members` policy can ask "is the caller a member?" without recursing into itself. Their owner must bypass RLS, because every table is `force`d. That holds for the superuser in Docker and PGlite, but not on a managed Postgres (ADR 0005, M7). One helper, `app_record_visible`, holds the record read rule, and `records` and its child tables all use it. The full set is in `packages/db/drizzle/0001_rls.sql`.
 
 Policies (summary; each table gets `enable row level security` plus `force row level security`):
 
 | Table | Read (`select`) | Write |
 |---|---|---|
-| `projects` | Caller is a member | Insert: the workspace owner. Update: role ≥ manager. |
-| `project_members`, `invites` | Caller is a member (invites: role ≥ manager) | Role ≥ manager; owner rows only by an owner |
-| `records`, `record_revisions` | `workspace_id` matches **and** one of: `owner_user_id = app_uid()`; `visibility = 'project'` and caller is a member; `visibility = 'restricted'` and caller is in `record_audiences`. **Inbox** rows (`project_id is null`) are visible only to their owner. | Insert: role ≥ contributor (connectors run as their owner). `records` updates go only through the service, which also writes a revision. Revisions are insert-only. |
+| `workspaces` | The owner, and members of its projects | Insert: only as the owner. Update: the owner. |
+| `users` | Yourself, and anyone who shares an active project with you | Insert: `hub_auth` only |
+| `projects` | Caller is a member, or the workspace owner | Insert: the workspace owner. Update: role ≥ manager. |
+| `project_members`, `invites` | Caller is a member (invites: role ≥ manager) | Role ≥ manager; owner rows only by an owner. The workspace owner may add the first members of a new project. A member may update their own row to set `left_at`, but never raise their role. |
+| `records`, `record_revisions` | `workspace_id` matches **and** one of: `owner_user_id = app_uid()`; `visibility = 'project'` and caller is a member; `visibility = 'restricted'` and caller is a current member and in `record_audiences`. **Inbox** rows (`project_id is null`) are visible only to their owner. Revisions follow their record's **current** visibility, so making a note private hides its history too. | Insert: role ≥ contributor (connectors run as their owner). `records` updates go only through the service, which also writes a revision. Revisions are insert-only. |
 | `comments` | As the target, plus the comment's own visibility | Insert: role ≥ commenter. Update or delete: the author. `hidden_*`: role ≥ manager. |
 | `reports`, `report_versions`, `evidence_refs` | Caller is in `report_audience` | Insert: role ≥ contributor, and the validator has passed |
 | `guidance`, `guidance_versions` | As `visibility` | Project scope: role ≥ manager. Report scope: role ≥ contributor. |
@@ -697,7 +719,7 @@ Policies (summary; each table gets `enable row level security` plus `force row l
 
 Unauthenticated access to a `share_links` URL goes through a service endpoint that returns only that report version's `body_md`. It never opens a database session as a user.
 
-**In the MVP** there's one user, who owns every project. The same policies run anyway, so they're tested from day one (spec §16.2, rule 5).
+**In the MVP** there's one user, who owns every project. The same policies run anyway, so they're tested from day one (spec §16.2, rule 5). `packages/db/test/rls.test.ts` has one test per policy, and fails if any table lacks forced RLS or any policy goes untested.
 
 ---
 
