@@ -1,0 +1,3 @@
+[install]
+# One copy of each package across workspaces (isolated installs duplicated Better Auth by peer set).
+linker = "hoisted"

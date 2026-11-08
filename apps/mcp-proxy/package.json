@@ -1,0 +1,16 @@
+{
+  "name": "@xjournal/mcp-proxy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "hub-mcp: stdio to Streamable HTTP proxy",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  },
+  "bin": {
+    "hub-mcp": "./src/main.ts"
+  }
+}

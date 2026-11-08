@@ -1,0 +1,16 @@
+{
+  "name": "@xjournal/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "hub CLI",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xjournal/db": "workspace:*"
+  },
+  "bin": {
+    "hub": "./src/main.ts"
+  }
+}

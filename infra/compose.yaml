@@ -1,0 +1,27 @@
+# Local stack (spec §16.2). Start with `bun run db:up`, or from this folder `docker compose up -d`.
+# The hub itself runs from source in M0 (`bun run dev`); the hub container and the `prod`
+# profile (Caddy, backups) arrive with hosted mode (plan.md M7).
+name: xjournal
+
+services:
+  postgres:
+    # Pinned major version: matches PGlite 0.4.x in tests (docs/adr/0004).
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: hub
+      POSTGRES_DB: hub
+    ports:
+      # Bound to localhost only; never exposed off the machine (spec §11.4).
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub -d hub"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

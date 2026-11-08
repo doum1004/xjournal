@@ -1,0 +1,10 @@
+{
+  "name": "@xjournal/reports",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Report inputs, templates, staleness, direct generation",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
