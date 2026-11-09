@@ -2,7 +2,12 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { scanWorklog } from '@xjournal/connectors';
+import {
+  type ConfluenceConfig,
+  scanConfluenceWorklog,
+  scanWorklog,
+  type WorklogRecord,
+} from '@xjournal/connectors';
 import type { RecordView } from '@xjournal/core';
 import { connectPostgres, type DbHandle, migrate, migrationStatus } from '@xjournal/db';
 import * as svc from '@xjournal/services';
@@ -34,11 +39,67 @@ Import:
                                      The prototype's daily logs (default DIR: ~/worklog).
                                      Safe to repeat: unchanged days are skipped, changed
                                      days get a new revision.
+  import confluence-worklog --from D --to D --project SLUG|inbox [--dry-run]
+                                     The Confluence work log's month pages ("November,
+                                     2026"). Same records as the file import: one per day.
 
 Environment:
-  DATABASE_URL                       Postgres connection string`;
+  DATABASE_URL                       Postgres connection string
+  CONFLUENCE_BASE_URL, CONFLUENCE_SPACE, CONFLUENCE_TOKEN [, CONFLUENCE_USER]
+                                     For confluence-worklog. With CONFLUENCE_USER the token
+                                     is sent as Basic auth, otherwise as a Bearer PAT.`;
 
 type Handler = (h: DbHandle, args: string[]) => Promise<number>;
+
+const describe = (records: WorklogRecord[], noun: string) => {
+  const dates = records.map((r) => r.input.externalId).sort();
+  return `${records.length} ${noun}${dates.length ? ` (${dates[0]} … ${dates.at(-1)})` : ''}`;
+};
+
+function confluenceConfig(): ConfluenceConfig | null {
+  const e = process.env;
+  const missing = ['CONFLUENCE_BASE_URL', 'CONFLUENCE_SPACE', 'CONFLUENCE_TOKEN'].filter(
+    (k) => !e[k],
+  );
+  if (missing.length) {
+    console.error(`Set ${missing.join(', ')} (in .env) to read the Confluence work log.`);
+    return null;
+  }
+  return {
+    baseUrl: e.CONFLUENCE_BASE_URL as string,
+    spaceKey: e.CONFLUENCE_SPACE as string,
+    token: e.CONFLUENCE_TOKEN as string,
+    ...(e.CONFLUENCE_USER ? { user: e.CONFLUENCE_USER } : {}),
+  };
+}
+
+/** Ingest in batches of 100 per source, printing rejected items. */
+async function ingestAll(
+  c: svc.Ctx,
+  records: WorklogRecord[],
+  tier: 'file_import' | 'builtin',
+  projectId: string | null,
+) {
+  const total = { created: 0, updated: 0, unchanged: 0, rejected: 0 };
+  const bySource = new Map<string, WorklogRecord[]>();
+  for (const r of records) bySource.set(r.source, [...(bySource.get(r.source) ?? []), r]);
+  for (const [source, items] of bySource) {
+    for (let i = 0; i < items.length; i += 100) {
+      const r = await svc.ingestRecords(c, {
+        source,
+        tier,
+        projectId,
+        records: items.slice(i, i + 100).map((d) => d.input),
+      });
+      total.created += r.created;
+      total.updated += r.updated;
+      total.unchanged += r.unchanged;
+      total.rejected += r.rejected.length;
+      for (const x of r.rejected) console.log(`  rejected ${x.externalId}: ${x.message}`);
+    }
+  }
+  return total;
+}
 
 async function ctx(h: DbHandle): Promise<svc.Ctx> {
   return { db: h.db, actor: await svc.localOwner(h.db) };
@@ -200,50 +261,59 @@ const commands: Record<string, Handler> = {
     const { values, positionals } = parseArgs({
       args,
       allowPositionals: true,
-      options: { project: { type: 'string' }, 'dry-run': { type: 'boolean' } },
+      options: {
+        project: { type: 'string' },
+        from: { type: 'string' },
+        to: { type: 'string' },
+        'dry-run': { type: 'boolean' },
+      },
     });
     const [what, dirArg] = positionals;
-    if (what !== 'worklog' || !values.project) {
-      console.error('Usage: hub import worklog [DIR] --project SLUG|inbox [--dry-run]');
+    if (!values.project || (what !== 'worklog' && what !== 'confluence-worklog')) {
+      console.error(
+        'Usage: hub import worklog [DIR] --project SLUG|inbox [--dry-run]\n' +
+          '       hub import confluence-worklog --from D --to D --project SLUG|inbox [--dry-run]',
+      );
       return 1;
     }
-    const dir = dirArg ?? join(homedir(), 'worklog');
     const c = await ctx(h);
     const projectId = values.project === 'inbox' ? null : await projectIdFor(c, values.project);
     const project = (await svc.listProjects(c)).find((p) => p.id === projectId);
-    const owner = await svc.localOwner(h.db);
-    const scan = scanWorklog(dir, project?.timeZone ?? owner.timeZone);
+    const timeZone = project?.timeZone ?? (await svc.localOwner(h.db)).timeZone;
+    const where = project ? `#${project.slug}` : 'the Inbox';
 
-    const dates = scan.daily.map((d) => d.input.externalId).sort();
-    console.log(
-      `${dir}: ${scan.daily.length} daily logs${dates.length ? ` (${dates[0]} … ${dates.at(-1)})` : ''}, ` +
-        `${scan.reviews.length} reviews, ${scan.skipped.length} skipped`,
-    );
-    for (const s of scan.skipped) console.log(`  skipped ${s.file}: ${s.reason}`);
-    if (scan.reviews.length) {
-      console.log('  reviews become report versions once reports exist (M3); not imported now');
+    let records: WorklogRecord[];
+    let tier: 'file_import' | 'builtin';
+    if (what === 'worklog') {
+      const dir = dirArg ?? join(homedir(), 'worklog');
+      const scan = scanWorklog(dir, timeZone);
+      records = scan.daily;
+      tier = 'file_import';
+      console.log(
+        `${dir}: ${describe(records, 'daily logs')}, ${scan.reviews.length} reviews, ${scan.skipped.length} skipped`,
+      );
+      for (const s of scan.skipped) console.log(`  skipped ${s.file}: ${s.reason}`);
+      if (scan.reviews.length) {
+        console.log('  reviews become report versions once reports exist (M3); not imported now');
+      }
+    } else {
+      if (!values.from || !values.to) {
+        console.error('confluence-worklog needs --from and --to (YYYY-MM-DD)');
+        return 1;
+      }
+      const cfg = confluenceConfig();
+      if (!cfg) return 1;
+      const scan = await scanConfluenceWorklog(cfg, { from: values.from, to: values.to }, timeZone);
+      records = scan.records;
+      tier = 'builtin';
+      console.log(
+        `Confluence: ${describe(records, 'days')} from ${scan.pagesRead.length} month pages` +
+          (scan.pagesMissing.length ? `; no page for ${scan.pagesMissing.join(', ')}` : ''),
+      );
     }
     if (values['dry-run']) return 0;
 
-    const total = { created: 0, updated: 0, unchanged: 0, rejected: 0 };
-    const bySource = new Map<string, typeof scan.daily>();
-    for (const d of scan.daily) bySource.set(d.source, [...(bySource.get(d.source) ?? []), d]);
-    for (const [source, items] of bySource) {
-      for (let i = 0; i < items.length; i += 100) {
-        const r = await svc.ingestRecords(c, {
-          source,
-          tier: 'file_import',
-          projectId,
-          records: items.slice(i, i + 100).map((d) => d.input),
-        });
-        total.created += r.created;
-        total.updated += r.updated;
-        total.unchanged += r.unchanged;
-        total.rejected += r.rejected.length;
-        for (const x of r.rejected) console.log(`  rejected ${x.externalId}: ${x.message}`);
-      }
-    }
-    const where = project ? `#${project.slug}` : 'the Inbox';
+    const total = await ingestAll(c, records, tier, projectId);
     console.log(
       `Imported into ${where}: ${total.created} created, ${total.updated} updated, ` +
         `${total.unchanged} unchanged, ${total.rejected} rejected.`,

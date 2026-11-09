@@ -78,30 +78,47 @@ export function parseDailyLog(
   const body = rawBody.replace(new RegExp(`^\\s*#\\s+${date}[^\\n]*\\n?`), '').trim();
   if (!body) return { ok: false, reason: 'empty log' };
 
-  const title = clip(firstLine(body) ?? `Work log ${date}`, TITLE_LEN);
-  const summary = body.length > title.length ? clip(body, SUMMARY_MAX) : undefined;
-  const jira = unique(body.match(JIRA_KEY_RE) ?? []);
-  const urls = unique(body.match(URL_RE) ?? []);
   return {
     ok: true,
     record: {
       source: sourceFor(meta),
       file,
-      input: {
-        externalId: date,
-        kind: 'imported_log',
-        eventTime: startOfDay(date, timeZone).toISOString(),
-        applicableDate: date,
-        title,
-        ...(summary ? { summary } : {}),
-        actor: 'worklog',
-        payload: {
-          text: body,
-          file,
-          ...(Object.keys(meta).length ? { frontMatter: meta } : {}),
-          ...(jira.length || urls.length ? { refs: { jira, urls } } : {}),
-        },
-      },
+      input: dayLogInput(date, body, timeZone, {
+        file,
+        ...(Object.keys(meta).length ? { frontMatter: meta } : {}),
+      }),
+    },
+  };
+}
+
+/**
+ * A day's work log as a record: one `imported_log` per date, titled by its first line.
+ * Shared by the file import and the Confluence import, so both describe a day the same way.
+ */
+export function dayLogInput(
+  date: string,
+  body: string,
+  timeZone: string,
+  provenance: Record<string, unknown>,
+  url?: string,
+): RecordInput {
+  const title = clip(firstLine(body) ?? `Work log ${date}`, TITLE_LEN);
+  const summary = body.length > title.length ? clip(body, SUMMARY_MAX) : undefined;
+  const jira = unique(body.match(JIRA_KEY_RE) ?? []);
+  const urls = unique(body.match(URL_RE) ?? []);
+  return {
+    externalId: date,
+    kind: 'imported_log',
+    eventTime: startOfDay(date, timeZone).toISOString(),
+    applicableDate: date,
+    title,
+    ...(summary ? { summary } : {}),
+    ...(url ? { url } : {}),
+    actor: 'worklog',
+    payload: {
+      text: body,
+      ...provenance,
+      ...(jira.length || urls.length ? { refs: { jira, urls } } : {}),
     },
   };
 }
