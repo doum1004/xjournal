@@ -18,6 +18,7 @@ import { isIsoDate } from './dates';
 import { DayPage } from './pages/Day';
 import { InboxPage } from './pages/Inbox';
 import { RecordPage } from './pages/Record';
+import { ReportPage, ReportsPage } from './pages/Reports';
 import { SearchPage, type SearchParams } from './pages/Search';
 import { SettingsPage, type SettingsTab, settingsTabs } from './pages/Settings';
 import { TimelinePage } from './pages/Timeline';
@@ -113,6 +114,9 @@ function Header({ onAdd }: { onAdd: () => void }) {
             activeOptions={{ exact: true, includeSearch: false }}
           >
             Timeline
+          </Link>
+          <Link to="/reports" className={nav}>
+            Reports
           </Link>
           <Link to="/inbox" className={nav}>
             Inbox
@@ -224,6 +228,21 @@ const searchRoute = createRoute({
   },
 });
 
+const reportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports',
+  component: ReportsPage,
+});
+
+const reportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reports/$versionId',
+  component: function Report() {
+    const { versionId } = reportRoute.useParams();
+    return <ReportPage versionId={versionId} />;
+  },
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
@@ -246,6 +265,8 @@ const router = createRouter({
     recordRoute,
     inboxRoute,
     searchRoute,
+    reportsRoute,
+    reportRoute,
     settingsRoute,
   ]),
   defaultNotFoundComponent: () => <Panel>Page not found.</Panel>,

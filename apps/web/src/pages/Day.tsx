@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import type { DayView } from '@xjournal/core';
 import { api } from '../api';
 import { RecordItem } from '../components/RecordItem';
+import { ReportBody } from '../components/ReportView';
 import { Badge, Button, Empty, ErrorNote, Panel } from '../components/ui';
 import { addDays, longDate, today } from '../dates';
 import { useProject } from '../project';
@@ -124,6 +125,7 @@ export function DayPage({
         </div>
       </div>
       {day.data && <BundleStrip day={day.data} projectId={project.id} />}
+      {day.data?.daily?.versionId && <DailyReport versionId={day.data.daily.versionId} />}
       {day.error ? (
         <ErrorNote error={day.error} />
       ) : records.length === 0 && !day.isPending ? (
@@ -136,5 +138,19 @@ export function DayPage({
         </ul>
       )}
     </Panel>
+  );
+}
+
+function DailyReport({ versionId }: { versionId: string }) {
+  const v = useQuery({
+    queryKey: ['report-version', versionId],
+    queryFn: () => api.reportVersion(versionId),
+  });
+  if (!v.data) return null;
+  return (
+    <section className="mb-4 rounded-md border border-line p-3">
+      <h2 className="mb-2 text-sm font-semibold">Daily report</h2>
+      <ReportBody v={v.data} compact />
+    </section>
   );
 }

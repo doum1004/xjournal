@@ -251,7 +251,7 @@ interface FieldSpec {
   key: string;
   label: string;
   hint?: string;
-  kind: 'text' | 'list' | 'select';
+  kind: 'text' | 'list' | 'select' | 'checkbox';
   options?: string[];
   required?: boolean;
   /** Part of the source key: fixed once connected. */
@@ -332,25 +332,76 @@ const FORMS: Record<string, FieldSpec[]> = {
       kind: 'list',
       hint: 'Page IDs, e.g. your work-log tree',
     },
+    {
+      key: 'worklog.space',
+      label: 'Work log space',
+      kind: 'text',
+      placeholder: '~jdoe',
+      hint: 'Where daily reports are published. Empty: no work log.',
+    },
+    {
+      key: 'worklog.rootPageId',
+      label: 'Work log root page ID',
+      kind: 'text',
+      hint: 'The page the "Work Logs - <year>" pages live under',
+    },
+    {
+      key: 'worklog.jiraServer',
+      label: 'Jira link name',
+      kind: 'text',
+      hint: 'For live [PROJ-1] macros',
+    },
+    { key: 'worklog.jiraServerId', label: 'Jira link ID', kind: 'text' },
+    {
+      key: 'worklog.mirrorDaily',
+      label: 'Publish every saved daily report',
+      kind: 'checkbox',
+    },
   ],
 };
 
 type FormValues = Record<string, string>;
 
+// Keys may be dotted ("worklog.space") for nested config objects.
+const getPath = (c: Record<string, unknown>, key: string): unknown =>
+  key
+    .split('.')
+    .reduce<unknown>(
+      (o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined),
+      c,
+    );
+
 const formFromConfig = (specs: FieldSpec[], c: Record<string, unknown>): FormValues =>
   Object.fromEntries(
     specs.map((f) => {
-      const v = c[f.key];
+      const v = getPath(c, f.key);
       return [f.key, Array.isArray(v) ? v.join(', ') : v != null ? String(v) : (f.initial ?? '')];
     }),
   );
 
-const configFromForm = (specs: FieldSpec[], v: FormValues, base: Record<string, unknown> = {}) => ({
-  ...base,
-  ...Object.fromEntries(
-    specs.map((f) => [f.key, f.kind === 'list' ? list(v[f.key] ?? '') : (v[f.key] ?? '').trim()]),
-  ),
-});
+const configFromForm = (specs: FieldSpec[], v: FormValues, base: Record<string, unknown> = {}) => {
+  const out: Record<string, unknown> = { ...base };
+  const nested: Record<string, Record<string, unknown>> = {};
+  for (const f of specs) {
+    const raw = v[f.key] ?? '';
+    const value =
+      f.kind === 'list' ? list(raw) : f.kind === 'checkbox' ? raw === 'true' : raw.trim();
+    const [head, sub] = f.key.split('.') as [string, string | undefined];
+    if (sub) {
+      nested[head] ??= {};
+      if (value !== '') (nested[head] as Record<string, unknown>)[sub] = value;
+    } else {
+      out[head] = value;
+    }
+  }
+  for (const [k, obj] of Object.entries(nested)) {
+    // A nested block with nothing but defaults (e.g. no work log space) is left out.
+    const meaningful = Object.entries(obj).some(([, x]) => x !== false && x !== '');
+    if (meaningful) out[k] = obj;
+    else delete out[k];
+  }
+  return out;
+};
 
 function KindFields({
   specs,
@@ -367,7 +418,14 @@ function KindFields({
     <div className="grid gap-3 sm:grid-cols-2">
       {specs.map((f) => (
         <Field key={f.key} label={f.label} {...(f.hint ? { hint: f.hint } : {})}>
-          {f.kind === 'select' ? (
+          {f.kind === 'checkbox' ? (
+            <input
+              type="checkbox"
+              checked={form[f.key] === 'true'}
+              onChange={(e) => set({ ...form, [f.key]: String(e.target.checked) })}
+              className="block"
+            />
+          ) : f.kind === 'select' ? (
             <select
               value={form[f.key] ?? ''}
               onChange={(e) => set({ ...form, [f.key]: e.target.value })}

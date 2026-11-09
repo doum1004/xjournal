@@ -150,7 +150,14 @@ function RecentDays({ byDate }: { byDate: Map<string, DaySummary> }) {
             className="flex items-center justify-between py-2 text-sm hover:text-accent"
           >
             <span>{longDate(d.date)}</span>
-            <span className="text-muted tabular-nums">
+            <span className="flex items-center gap-2 text-muted tabular-nums">
+              {d.daily ? (
+                d.daily.status === 'stale' ? (
+                  <span className="text-warn">report out of date</span>
+                ) : (
+                  <span className="text-accent">report</span>
+                )
+              ) : null}
               {d.recordCount} record{d.recordCount === 1 ? '' : 's'}
             </span>
           </Link>

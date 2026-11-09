@@ -341,7 +341,12 @@ export async function dailyReportDates(
   o: { projectId: string; audienceKey: string; from: string; toExcl: string },
 ) {
   return tx
-    .select({ date: reports.periodStart, status: reports.status, reportId: reports.id })
+    .select({
+      date: reports.periodStart,
+      status: reports.status,
+      reportId: reports.id,
+      versionId: reports.currentVersionId,
+    })
     .from(reports)
     .where(
       and(

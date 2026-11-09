@@ -126,8 +126,10 @@ export function statementsOf(body: string): Statement[] {
       return;
     }
     const cur = current as Statement | null;
-    if (cur) {
-      cur.text = `${cur.text} ${raw.trim()}`; // a wrapped line continues the statement
+    // A wrapped line continues the statement: indented under a bullet, or any next line of a
+    // paragraph. An unindented line after a bullet starts a new statement.
+    if (cur && (cur.kind === 'paragraph' || /^\s/.test(raw))) {
+      cur.text = `${cur.text} ${raw.trim()}`;
       return;
     }
     stack.length = 0;

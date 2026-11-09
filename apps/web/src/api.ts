@@ -7,8 +7,11 @@ import type {
   Page,
   ProjectView,
   RecordView,
+  ReportRef,
+  ReportVersionView,
   RevisionView,
   RuleMatch,
+  StatusView,
   WorkspaceView,
 } from '@xjournal/core';
 
@@ -164,6 +167,41 @@ export const api = {
     }),
   editNote: (id: string, text: string) => request<RecordView>('PATCH', `/notes/${id}`, { text }),
   route: (id: string, body: RouteBody) => request<RecordView>('POST', `/records/${id}/route`, body),
+
+  // Reports (api.md §3.5)
+  report: (projectId: string, kind: string, date: string) =>
+    request<ReportVersionView>('GET', `/report${qs({ projectId, kind, date })}`),
+  reportVersion: (id: string) => request<ReportVersionView>('GET', `/report-versions/${id}`),
+  reports: (projectId: string, from: string, to: string, kind?: string) =>
+    request<{
+      items: (ReportRef & {
+        versionNo: number | null;
+        path: string | null;
+        updatedAt: string | null;
+      })[];
+    }>('GET', `/projects/${projectId}/reports${qs({ from, to, kind })}`),
+  reportVersions: (reportId: string) =>
+    request<{
+      items: {
+        versionId: string;
+        versionNo: number;
+        path: string;
+        client: string | null;
+        model: string | null;
+        changeReason: string;
+        changeSummary: string | null;
+        createdAt: string;
+      }[];
+    }>('GET', `/reports/${reportId}/versions`),
+  publish: (versionId: string, force = false) =>
+    request<{
+      status: string;
+      url?: string;
+      pageTitle?: string;
+      currentText?: string;
+      message?: string;
+    }>('POST', `/report-versions/${versionId}/publish`, { confirm: true, force }),
+  status: (projectId?: string) => request<StatusView>('GET', `/status${qs({ projectId })}`),
 
   // Settings (api.md §3.2a)
   workspace: () => request<WorkspaceView>('GET', '/workspace'),

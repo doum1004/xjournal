@@ -96,7 +96,8 @@ export interface DaySummary {
   bundleHash: string | null;
   /** No bundle yet, or one whose inputs changed. */
   dirty: boolean;
-  daily: null;
+  /** Your daily report for the day, if any. */
+  daily: { reportId: string; status: string; versionId: string | null } | null;
   coverage: Coverage;
 }
 
@@ -107,7 +108,7 @@ export interface DayView {
   bundle: BundleView | null;
   workItems: { id: string; title: string; records: RecordView[] }[];
   unlinked: RecordView[];
-  daily: null;
+  daily: { reportId: string; status: string; versionId: string | null } | null;
   coverage: Coverage;
 }
 
