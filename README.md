@@ -82,6 +82,8 @@ bun run hub publish --date 2026-11-06 --project work   # a daily report to the C
 
 **Confluence work log:** connect Confluence in Settings with the work log's space and root page ID (and "publish every saved daily report" to mirror automatically). The hub only overwrites rows it wrote: a row edited in Confluence since is refused until you merge that text into the report or publish with `--force`.
 
+**Without an agent:** add a Claude API key in Settings → AI (kept in the OS keychain). The hub then writes reports itself, from the same inputs and through the same validator: **Write all due reports** on the Reports page, **Write the daily report** on a day, or **Regenerate…** on a report (with one-off instructions; lasting ones go in Guidance). It uses `claude-opus-5-5`; set `HUB_MODEL` to change it. Every report can be downloaded as Markdown with its provenance in front matter and its citations as footnotes.
+
 Retiring the prototype `worklog` skill: once a few mornings of hub reports look right, stop running the skill; its history is already imported (`hub import worklog`, then `hub import reports`).
 
 ## Development

@@ -167,8 +167,10 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Save a version (agent path) | `POST /reports/{r}/versions` `ReportSubmission` → 201 `ReportVersionView`, or **422** with `validation` errors | contributor, in audience | `save_report` |
 | Current version by period | `GET /report?projectId=&kind=&date=&audience=` → `ReportVersionView` | in audience | `get_report` |
 | Publish (Confluence work log) | `POST /report-versions/{v}/publish` `{confirm: true, force?, connectorAccountId?}` → `{status: 'published', url} \| {status: 'refused', currentText}` | in audience | |
-| Generate (direct path) | `POST /reports/{r}/generate` `{instructions?}` → 202 `{jobId}`; **409** `direct_generation_disabled` when there's no model key | contributor, in audience | |
-| Regenerate stale reports | `POST /projects/{p}/reports/refresh` `{kinds?, from?, to?}` → 202 | contributor | |
+| Generate (direct path) | `POST /reports/{r}/generate` `{instructions?}` → 202 `{queued, alreadyRunning}` (one job per report), or the saved version without a queue; **409** with `reason: 'direct_generation_disabled'` when there's no model key | contributor, in audience | |
+| Model key | `GET /ai` → `{hasKey, model}`; `PUT /ai/key` `{key}` → 204 (write-only, OS keychain); `DELETE /ai/key` | owner user | |
+| Export | `GET /report-versions/{v}/export` → `text/markdown`: front matter (kind, project, range, version, path, generator, template, input and guidance hashes, inputs) and citations as footnotes | in audience | |
+| Write every due report | `POST /projects/{p}/reports/refresh` → 202 `{queued, due}` (the `get_status` due list), or `{written, failed}` without a queue | contributor | |
 
 ### 3.6 Guidance, comments, reminders
 

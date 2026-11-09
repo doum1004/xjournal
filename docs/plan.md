@@ -116,6 +116,16 @@ Goal: prove the risky parts before building on them.
 
 ---
 
+### Status (2026-11-09)
+
+| Milestone | State |
+|---|---|
+| M0 | Done (ADRs 0001–0005) |
+| M1 | Done: 625 prototype days imported and browsable |
+| M2 | Built (ADR 0006). GitHub verified against the prototype's digests on real accounts; Jira and Confluence tested against recorded API shapes, waiting for a real connection |
+| M3 | Built (ADR 0007). The prototype's history imported as reports; a cited daily report written from real inputs over the API. Waiting on: a real morning run from Claude Code, and the Confluence mirror on the real work log |
+| M4 | Built. Direct generation tested with a scripted model; waiting for a Claude API key to run for real |
+
 ## 3. Risks and how they're handled
 
 | Risk | Handling |
