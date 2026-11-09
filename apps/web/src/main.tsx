@@ -19,6 +19,7 @@ import { DayPage } from './pages/Day';
 import { InboxPage } from './pages/Inbox';
 import { RecordPage } from './pages/Record';
 import { SearchPage, type SearchParams } from './pages/Search';
+import { SettingsPage, type SettingsTab, settingsTabs } from './pages/Settings';
 import { TimelinePage } from './pages/Timeline';
 import { ProjectProvider, useProject } from './project';
 import './styles.css';
@@ -118,6 +119,9 @@ function Header({ onAdd }: { onAdd: () => void }) {
           </Link>
           <Link to="/search" search={{ q: '' }} className={nav}>
             Search
+          </Link>
+          <Link to="/settings" search={{ tab: 'connectors' }} className={nav}>
+            Settings
           </Link>
         </nav>
         <form
@@ -220,8 +224,30 @@ const searchRoute = createRoute({
   },
 });
 
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings',
+  validateSearch: (s: Record<string, unknown>): { tab: SettingsTab } => ({
+    tab: settingsTabs.includes(s.tab as SettingsTab) ? (s.tab as SettingsTab) : 'connectors',
+  }),
+  component: function Settings() {
+    const { tab } = settingsRoute.useSearch();
+    const navigate = useNavigate();
+    return (
+      <SettingsPage tab={tab} onTab={(t) => navigate({ to: '/settings', search: { tab: t } })} />
+    );
+  },
+});
+
 const router = createRouter({
-  routeTree: rootRoute.addChildren([timelineRoute, dayRoute, recordRoute, inboxRoute, searchRoute]),
+  routeTree: rootRoute.addChildren([
+    timelineRoute,
+    dayRoute,
+    recordRoute,
+    inboxRoute,
+    searchRoute,
+    settingsRoute,
+  ]),
   defaultNotFoundComponent: () => <Panel>Page not found.</Panel>,
 });
 

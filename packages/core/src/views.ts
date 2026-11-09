@@ -102,3 +102,56 @@ export interface DayView {
   daily: null;
   coverage: Coverage;
 }
+
+// ------------------------------------------------------------------------------------------
+// Settings (api.md §3.2a)
+// ------------------------------------------------------------------------------------------
+
+export interface WorkspaceView {
+  id: string;
+  name: string;
+  domain: string;
+  timeZone: string;
+  /** 1 = Monday … 7 = Sunday (ISO). */
+  weekStart: number;
+  isOwner: boolean;
+}
+
+export interface StreamStateView {
+  stream: string;
+  lastSuccessAt: string | null;
+  lastAttemptAt: string | null;
+  lastError: string | null;
+  historyFloor: string | null;
+}
+
+export interface ConnectorView {
+  id: string;
+  kind: string;
+  source: string;
+  displayName: string;
+  authType: string;
+  hasSecret: boolean;
+  status: string;
+  config: Record<string, unknown>;
+  projectIds: string[];
+  streams: StreamStateView[];
+  createdAt: string;
+  disconnectedAt: string | null;
+}
+
+export interface ConnectorKindView {
+  kind: string;
+  displayName: string;
+  authTypes: string[];
+  streams: { key: string; description: string }[];
+  policy: { fullText: boolean; historyLimitDays?: number };
+  configSchema: Record<string, unknown> | null;
+}
+
+export interface IdentityView {
+  id: string;
+  source: string;
+  accountKey: string;
+  aliases: string[];
+}

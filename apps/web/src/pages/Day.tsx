@@ -1,13 +1,77 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import type { DayView } from '@xjournal/core';
 import { api } from '../api';
 import { RecordItem } from '../components/RecordItem';
-import { Button, Empty, ErrorNote, Panel } from '../components/ui';
+import { Badge, Button, Empty, ErrorNote, Panel } from '../components/ui';
 import { addDays, longDate, today } from '../dates';
 import { useProject } from '../project';
 
-// Day view (plan.md M1): one project's evidence for one date. The daily report and coverage
-// appear here once bundles and reports exist (M2–M3).
+// Day view (plan.md M1–M2): one project's evidence for one date, its bundle and each
+// connector's coverage of the day. The daily report joins it in M3.
+
+const COVERAGE_TONE = {
+  complete: 'accent',
+  pending: 'muted',
+  error: 'warn',
+  truncated: 'warn',
+} as const;
+const COVERAGE_TEXT = {
+  complete: 'complete',
+  pending: 'not synced past this day yet',
+  error: 'last sync failed',
+  truncated: 'history starts later',
+} as const;
+
+function BundleStrip({ day, projectId }: { day: DayView; projectId: string }) {
+  const qc = useQueryClient();
+  const rebuild = useMutation({
+    mutationFn: () => api.rebuildDay(projectId, day.date),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['day'] }),
+  });
+  const coverage = Object.entries(day.coverage);
+  if (!day.bundle && coverage.length === 0 && day.unlinked.length === 0) return null;
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+      {day.bundle ? (
+        <span
+          title={`Bundle ${day.bundle.hash}, built ${new Date(day.bundle.builtAt).toLocaleString()}`}
+        >
+          Bundle <span className="font-mono">{day.bundle.hash.slice(0, 8)}</span>
+          {day.bundle.dirty && (
+            <>
+              {' '}
+              <Badge tone="warn">out of date</Badge>
+            </>
+          )}
+        </span>
+      ) : (
+        <Badge tone="warn">no bundle yet</Badge>
+      )}
+      {(!day.bundle || day.bundle.dirty) && (
+        <Button
+          variant="ghost"
+          className="px-2 py-0.5 text-xs"
+          onClick={() => rebuild.mutate()}
+          disabled={rebuild.isPending}
+        >
+          Rebuild
+        </Button>
+      )}
+      {coverage.map(([id, c]) => (
+        <span
+          key={id}
+          title={c.truncatedBefore ? `Nothing before ${c.truncatedBefore}` : undefined}
+        >
+          <Badge tone={COVERAGE_TONE[c.status]}>
+            {c.source}: {COVERAGE_TEXT[c.status]}
+          </Badge>
+        </span>
+      ))}
+      {rebuild.error && <ErrorNote error={rebuild.error} />}
+    </div>
+  );
+}
 
 export function DayPage({
   date,
@@ -59,6 +123,7 @@ export function DayPage({
           </Button>
         </div>
       </div>
+      {day.data && <BundleStrip day={day.data} projectId={project.id} />}
       {day.error ? (
         <ErrorNote error={day.error} />
       ) : records.length === 0 && !day.isPending ? (

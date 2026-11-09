@@ -1,10 +1,14 @@
 import type {
+  ConnectorKindView,
+  ConnectorView,
   DaySummary,
   DayView,
+  IdentityView,
   Page,
   ProjectView,
   RecordView,
   RevisionView,
+  WorkspaceView,
 } from '@xjournal/core';
 
 // A thin client for /api/v1 (docs/api.md). Local mode authenticates with the per-install
@@ -68,6 +72,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       detail ? `${p.title}: ${detail}` : (p.title ?? res.statusText),
     );
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
@@ -91,6 +96,34 @@ export interface RouteBody {
   tags?: string[];
 }
 
+export interface ProjectPatch {
+  name?: string;
+  timeZone?: string | null;
+  defaultNoteVisibility?: string;
+}
+
+export interface ConnectorInput {
+  kind: string;
+  displayName?: string;
+  config: Record<string, unknown>;
+  secret?: string;
+  projectIds: string[];
+  backfillFrom?: string;
+}
+
+export interface ConnectorPatch {
+  displayName?: string;
+  config?: Record<string, unknown>;
+  projectIds?: string[];
+}
+
+/** `202` from the queue, or the finished result when the hub runs it inline. */
+export type Queued = { queued: boolean; alreadyRunning: boolean } | Record<string, unknown>;
+
+/** The queue already had this job (a second click while one is queued or running). */
+export const alreadyRunning = (q: Queued | undefined): boolean =>
+  q != null && 'alreadyRunning' in q && q.alreadyRunning === true;
+
 export const api = {
   me: () => request<Me>('GET', '/me'),
   days: (projectId: string, from: string, to: string) =>
@@ -110,4 +143,33 @@ export const api = {
     }),
   editNote: (id: string, text: string) => request<RecordView>('PATCH', `/notes/${id}`, { text }),
   route: (id: string, body: RouteBody) => request<RecordView>('POST', `/records/${id}/route`, body),
+
+  // Settings (api.md §3.2a)
+  workspace: () => request<WorkspaceView>('GET', '/workspace'),
+  updateWorkspace: (body: { name?: string; timeZone?: string; weekStart?: number }) =>
+    request<WorkspaceView>('PATCH', '/workspace', body),
+  createProject: (body: { slug: string; name: string; timeZone?: string }) =>
+    request<ProjectView>('POST', '/projects', body),
+  updateProject: (id: string, body: ProjectPatch) =>
+    request<ProjectView>('PATCH', `/projects/${id}`, body),
+  archiveProject: (id: string) => request<void>('POST', `/projects/${id}/archive`),
+  rebuildDay: (projectId: string, date: string) =>
+    request<{ changed: boolean }>('POST', `/projects/${projectId}/days/${date}/rebuild`),
+
+  connectorKinds: () => request<{ items: ConnectorKindView[] }>('GET', '/connector-kinds'),
+  connectors: () => request<{ items: ConnectorView[] }>('GET', '/connectors'),
+  addConnector: (body: ConnectorInput) => request<ConnectorView>('POST', '/connectors', body),
+  updateConnector: (id: string, body: ConnectorPatch) =>
+    request<ConnectorView>('PATCH', `/connectors/${id}`, body),
+  replaceSecret: (id: string, secret: string) =>
+    request<void>('PUT', `/connectors/${id}/secret`, { secret }),
+  removeConnector: (id: string) => request<void>('DELETE', `/connectors/${id}`),
+  syncConnector: (id: string, body: { backfillFrom?: string } = {}) =>
+    request<Queued>('POST', `/connectors/${id}/sync`, body),
+  morningRun: () => request<Queued>('POST', '/runs/morning'),
+
+  identities: () => request<{ items: IdentityView[] }>('GET', '/identities'),
+  addIdentity: (body: { source: string; accountKey: string; aliases: string[] }) =>
+    request<IdentityView>('POST', '/identities', body),
+  removeIdentity: (id: string) => request<void>('DELETE', `/identities/${id}`),
 };

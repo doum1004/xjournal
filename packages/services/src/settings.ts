@@ -1,4 +1,7 @@
-import { isTimeZone, type ProjectView, zVisibility } from '@xjournal/core';
+import { isTimeZone, type ProjectView, type WorkspaceView, zVisibility } from '@xjournal/core';
+
+export type { WorkspaceView };
+
 import { connectorRepo, projectRepo } from '@xjournal/db';
 import { connectorSecretRef } from '@xjournal/secrets';
 import { z } from 'zod';
@@ -21,16 +24,6 @@ const zTimeZone = z.string().refine(isTimeZone, 'an IANA time zone, e.g. America
 // ------------------------------------------------------------------------------------------
 // Workspace
 // ------------------------------------------------------------------------------------------
-
-export interface WorkspaceView {
-  id: string;
-  name: string;
-  domain: string;
-  timeZone: string;
-  /** 1 = Monday … 7 = Sunday (ISO). */
-  weekStart: number;
-  isOwner: boolean;
-}
 
 export async function getWorkspace(ctx: Ctx): Promise<WorkspaceView> {
   return asCaller(ctx, async (tx) => {

@@ -52,6 +52,18 @@ bun run hub connectors                             # status, last sync and error
 
 A sync writes each page of records together with its cursor, so an interrupted sync resumes where it stopped. Records go to the connector's project when it feeds exactly one, otherwise to the Inbox.
 
+The same is in the web UI under **Settings**: connect, edit, re-token, sync, backfill or disconnect accounts, map identities, and manage the workspace and projects.
+
+## The morning run
+
+The hub server runs it every day at 07:00 in the workspace time zone (`HUB_MORNING_CRON` to change): every connector syncs from its cursor, then the daily bundles of the last 14 days, and of any older day whose records changed, are rebuilt. A bundle is a day's evidence for one project under one content hash, with each connector's coverage of that day (complete, pending, failed or truncated).
+
+```sh
+bun run hub run                  # the same run, from the CLI
+bun run hub run --no-sync        # bundles only
+bun run hub bundles --project work --date 2026-11-06   # one day
+```
+
 ## Development
 
 | Command | Does |

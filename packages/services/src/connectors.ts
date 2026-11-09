@@ -1,5 +1,14 @@
 import { type ConnectorRegistry, kindOfSource, type SyncLog } from '@xjournal/connectors';
-import { newId, zIsoDate, zVisibility } from '@xjournal/core';
+import {
+  type ConnectorView,
+  type IdentityView,
+  newId,
+  zIsoDate,
+  zVisibility,
+} from '@xjournal/core';
+
+export type { ConnectorView, IdentityView };
+
 import {
   type ConnectorAccountRow,
   connectorRepo,
@@ -37,29 +46,6 @@ export const zConnectorInput = z.object({
   backfillFrom: zIsoDate.optional(),
 });
 export type ConnectorInput = z.input<typeof zConnectorInput>;
-
-export interface StreamStateView {
-  stream: string;
-  lastSuccessAt: string | null;
-  lastAttemptAt: string | null;
-  lastError: string | null;
-  historyFloor: string | null;
-}
-
-export interface ConnectorView {
-  id: string;
-  kind: string;
-  source: string;
-  displayName: string;
-  authType: string;
-  hasSecret: boolean;
-  status: string;
-  config: Record<string, unknown>;
-  projectIds: string[];
-  streams: StreamStateView[];
-  createdAt: string;
-  disconnectedAt: string | null;
-}
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
@@ -241,13 +227,6 @@ export const zIdentityInput = z.object({
   /** Commit author names and emails that also mean this account. */
   aliases: z.array(z.string().trim().min(1).max(200)).default([]),
 });
-
-export interface IdentityView {
-  id: string;
-  source: string;
-  accountKey: string;
-  aliases: string[];
-}
 
 const toIdentityView = (i: IdentityRow): IdentityView => ({
   id: i.id,
