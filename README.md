@@ -64,6 +64,26 @@ bun run hub run --no-sync        # bundles only
 bun run hub bundles --project work --date 2026-11-06   # one day
 ```
 
+## Reports, with Claude Code
+
+Reports are written by an agent over MCP (and, from M4, by the hub itself). Every statement cites its evidence (`[[r:<recordRevisionId>]]`, `[[v:<versionId>#<anchor>]]`, and `[[s:<metric>]]` for numbers); the hub validates each version and rejects one with unsupported statements, unknown citations, records outside the period or counts that don't come from stats.
+
+```sh
+claude mcp add --transport http xjournal http://localhost:7420/mcp --header "Authorization: Bearer $HUB_LOCAL_TOKEN"
+```
+
+Then, in Claude Code: *"run my morning work log"* (the `morning_run` prompt). The agent calls `get_status`, and for every report in `due` (missing daily reports for weekdays with evidence, stale reports, last week's and month's reviews) it calls `get_report_inputs`, writes, and `save_report`s, fixing whatever the validator points out. If it can read Slack, Calendar or Zoom for you, it first submits those with `ingest_records`.
+
+```sh
+bun run hub import reports --project work      # the prototype's daily logs and reviews as report versions
+bun run hub status                             # what's due, oldest first
+bun run hub publish --date 2026-11-06 --project work   # a daily report to the Confluence work log
+```
+
+**Confluence work log:** connect Confluence in Settings with the work log's space and root page ID (and "publish every saved daily report" to mirror automatically). The hub only overwrites rows it wrote: a row edited in Confluence since is refused until you merge that text into the report or publish with `--force`.
+
+Retiring the prototype `worklog` skill: once a few mornings of hub reports look right, stop running the skill; its history is already imported (`hub import worklog`, then `hub import reports`).
+
 ## Development
 
 | Command | Does |
@@ -73,7 +93,7 @@ bun run hub bundles --project work --date 2026-11-06   # one day
 | `bun run typecheck` / `bun run lint` | TypeScript and Biome |
 | `bun run db:generate <name>` | New Drizzle migration from `packages/db/src/schema` |
 
-Connect Claude Code to a local hub: `claude mcp add --transport http xjournal http://localhost:7420/mcp --header "Authorization: Bearer $HUB_LOCAL_TOKEN"`, or use the stdio proxy (`apps/mcp-proxy`) as shown in ADR 0002.
+For clients that only launch stdio servers, use the stdio proxy (`apps/mcp-proxy`), as shown in ADR 0002.
 
 | Document | Contents |
 |---|---|

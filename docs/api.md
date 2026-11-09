@@ -152,7 +152,7 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Days in a range | `GET /projects/{p}/days?from=&to=` → `[{date, recordCount, mineCount, bundleHash, dirty, daily: {reportId, status, versionId} \| null, coverage}]` | viewer | |
 | One day | `GET /projects/{p}/days/{date}` → `{bundle, workItems: [{id, title, records: RecordView[]}], unlinked: RecordView[], daily: ReportVersionView \| null, coverage}` | viewer (records filtered by visibility) | `get_day` |
 | Rebuild a day's bundle | `POST /projects/{p}/days/{date}/rebuild` → `{date, hash, changed, items}` | contributor | |
-| Status | `GET /status?projectId=` → `{openIssues, prsInFlight, staleReports, missingDays, inboxCount, pendingSuggestions, pendingDevices, connectors: Coverage}` | viewer | `get_status` |
+| Status | `GET /status?projectId=` → `{projects, due: [{kind, date, projectId, reason: 'missing' \| 'stale'}], missingDays, staleReports, inboxCount, connectors}` (`due`: what a morning run writes, oldest first) | viewer | `get_status` |
 | Stats | `GET /stats?projectId=&from=&to=&metrics=` → `{metrics: [{metric, value, query}]}` (deterministic, spec §5.8) | viewer | `get_stats` |
 
 ### 3.5 Reports
@@ -165,6 +165,8 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Diff | `GET /report-versions/{v}/diff?against={v2}` → `{changeReason, changeSummary, added, removed, changedRefs, guidanceChanges}` | in audience | |
 | Inputs for writing | `GET /reports/{r}/inputs` → `ReportInputs` (§4) | contributor, in audience | `get_report_inputs` |
 | Save a version (agent path) | `POST /reports/{r}/versions` `ReportSubmission` → 201 `ReportVersionView`, or **422** with `validation` errors | contributor, in audience | `save_report` |
+| Current version by period | `GET /report?projectId=&kind=&date=&audience=` → `ReportVersionView` | in audience | `get_report` |
+| Publish (Confluence work log) | `POST /report-versions/{v}/publish` `{confirm: true, force?, connectorAccountId?}` → `{status: 'published', url} \| {status: 'refused', currentText}` | in audience | |
 | Generate (direct path) | `POST /reports/{r}/generate` `{instructions?}` → 202 `{jobId}`; **409** `direct_generation_disabled` when there's no model key | contributor, in audience | |
 | Regenerate stale reports | `POST /projects/{p}/reports/refresh` `{kinds?, from?, to?}` → 202 | contributor | |
 
@@ -264,6 +266,8 @@ Example:
 The server assigns a stable **anchor** to every bullet and paragraph, stores the citations as `evidence_refs`, and renders them as links in the UI (the `[[…]]` tokens never reach readers).
 
 ### 4.3 Submission (`save_report` / `POST /reports/{r}/versions`)
+
+After a daily report is saved, the hub publishes it to the Confluence work log when the Confluence connector has `worklog.mirrorDaily`; the response carries `mirror: {status: 'published' | 'refused' | 'skipped' | 'error', …}`.
 
 ```ts
 interface ReportSubmission {
