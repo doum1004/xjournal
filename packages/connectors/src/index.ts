@@ -12,6 +12,14 @@ export {
   storageToText,
 } from './confluence-worklog';
 export {
+  apiBase,
+  type GithubConfig,
+  github,
+  isNoiseCommit,
+  ownerAllowed,
+  zGithubConfig,
+} from './github';
+export {
   type AnyConnector,
   type AuthType,
   type Connector,

@@ -345,3 +345,90 @@ describe('syncConnector', () => {
     expect(rows.length).toBe(1);
   });
 });
+
+describe('GitHub through the sync runner', () => {
+  test('connect, map the login, sync all streams, and re-sync without changes', async () => {
+    const merged = {
+      number: 5,
+      title: 'Ship it',
+      repository_url: 'https://api.github.com/repos/acme/sdk',
+      created_at: '2026-11-03T10:00:00Z',
+      closed_at: '2026-11-04T20:00:00Z',
+      user: { login: 'octocat' },
+      pull_request: { merged_at: '2026-11-04T20:00:00Z' },
+    };
+    const routes: Record<string, unknown> = {
+      '/users/octocat/events': [
+        {
+          id: '200',
+          type: 'PullRequestEvent',
+          created_at: '2026-11-04T20:00:00Z',
+          actor: { login: 'octocat' },
+          repo: { name: 'acme/sdk' },
+          payload: {
+            action: 'closed',
+            number: 5,
+            pull_request: {
+              number: 5,
+              title: 'Ship it',
+              merged: true,
+              merged_at: '2026-11-04T20:00:00Z',
+            },
+          },
+        },
+      ],
+      '/search/issues': { items: [merged] },
+    };
+    const fetchFake = (async (u: string | URL | Request) => {
+      const url = new URL(u instanceof Request ? u.url : String(u));
+      const page = url.searchParams.get('page');
+      if (url.pathname === '/users/octocat/events' && page !== '1') return Response.json([]);
+      return Response.json(routes[url.pathname] ?? {}, {
+        status: routes[url.pathname] ? 200 : 404,
+      });
+    }) as typeof fetch;
+    const { github } = await import('@xjournal/connectors');
+    const deps: ConnectorDeps = {
+      registry: new ConnectorRegistry([github]),
+      secrets: memorySecrets(),
+      fetch: fetchFake,
+    };
+    const c = await addConnector(ctx('eve'), deps, {
+      kind: 'github',
+      config: { host: 'github.com', login: 'octocat' },
+      secret: TOKEN,
+      projectIds: [s.p.Q],
+    });
+    expect(await listIdentities(ctx('eve'), 'github:github.com')).toMatchObject([
+      { accountKey: 'octocat' },
+    ]);
+
+    const first = await syncConnector(ctx('eve'), deps, c.id, { now: NOW });
+    expect(first.status).toBe('ok');
+    expect(first.warnings).toEqual([]);
+    // The fake search ignores dates, so it answers every window; only creations matter here.
+    expect(first.streams.map((x) => [x.stream, x.created])).toEqual([
+      ['events', 1],
+      ['search:opened', 1],
+      ['search:merged', 0], // the same merge as the event: deduped
+    ]);
+    const second = await syncConnector(ctx('eve'), deps, c.id, { now: NOW });
+    expect(second.streams.reduce((n, x) => n + x.created + x.updated, 0)).toBe(0);
+
+    const rows = await h.db
+      .select()
+      .from(schema.records)
+      .where(
+        and(
+          eq(schema.records.source, 'github:github.com'),
+          eq(schema.records.ownerUserId, s.u.eve),
+        ),
+      );
+    expect(rows.map((r) => [r.externalId, r.applicableDate, r.isMine, r.projectId]).sort()).toEqual(
+      [
+        ['acme/sdk#5/merged', '2026-11-04', true, s.p.Q],
+        ['acme/sdk#5/opened', '2026-11-03', true, s.p.Q],
+      ],
+    );
+  });
+});

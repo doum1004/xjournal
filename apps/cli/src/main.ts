@@ -43,6 +43,10 @@ Connectors:
                                      Connect an account. Asks for the token (hidden), or
                                      reads it from stdin; it goes to the OS keychain.
                                      --from: how far back the first sync reaches.
+                                     --token-from-gh: take the token from the GitHub CLI.
+                                     e.g. connector add github --project work --from 2023-01-01
+                                          --config '{"host":"github.com","login":"octocat",
+                                                     "includeOwners":["acme"]}' --token-from-gh
   connector remove <id>              Disconnect and delete the stored token (records stay)
   sync [ID…] [--stream S]… [--from D] [--max-pages N]
                                      Sync all connected accounts, or the ones given
@@ -178,6 +182,20 @@ async function readSecret(label: string): Promise<string> {
   });
 }
 
+/** The token the GitHub CLI holds for `login` on `host` (never printed). */
+function ghToken(host: string, login: string): string {
+  const r = Bun.spawnSync(['gh', 'auth', 'token', '--hostname', host, '--user', login]);
+  const token = r.stdout.toString().trim();
+  if (r.exitCode !== 0 || !token) {
+    throw new svc.ServiceError(
+      400,
+      'bad_request',
+      `gh has no token for ${login}@${host}: run \`gh auth login --hostname ${host}\``,
+    );
+  }
+  return token;
+}
+
 const ago = (iso: string | null) => (iso ? iso.replace('T', ' ').slice(0, 16) : 'never');
 
 async function readStdin(): Promise<string> {
@@ -229,6 +247,7 @@ const commands: Record<string, Handler> = {
           project: { type: 'string', multiple: true },
           config: { type: 'string' },
           from: { type: 'string' },
+          'token-from-gh': { type: 'boolean' },
         },
       });
       const kind = positionals[0];
@@ -255,7 +274,17 @@ const commands: Record<string, Handler> = {
           return 1;
         }
       }
-      const secret = desc.authTypes.includes('none') ? '' : await readSecret('Token');
+      let secret = '';
+      if (values['token-from-gh']) {
+        const cfg = config as { host?: string; login?: string };
+        if (!cfg.host || !cfg.login) {
+          console.error('--token-from-gh needs "host" and "login" in --config');
+          return 1;
+        }
+        secret = ghToken(cfg.host, cfg.login);
+      } else if (!desc.authTypes.includes('none')) {
+        secret = await readSecret('Token');
+      }
       const a = await svc.addConnector(c, deps, {
         kind,
         config,

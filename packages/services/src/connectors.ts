@@ -159,6 +159,22 @@ export async function addConnector(
           ...(req.defaultVisibility ? { defaultVisibility: req.defaultVisibility } : {}),
         });
       }
+      // Map the account's own login, unless it's mapped already.
+      const ident = connector.defaultIdentity?.(parsedConfig);
+      if (ident) {
+        const source = connector.sourceKey(parsedConfig);
+        const have = await connectorRepo.listIdentities(tx, source);
+        if (!have.some((i) => i.accountKey.toLowerCase() === ident.accountKey.toLowerCase())) {
+          await connectorRepo.insertIdentity(tx, {
+            id: newId(),
+            workspaceId: ctx.actor.workspaceId,
+            userId: ctx.actor.userId,
+            source,
+            accountKey: ident.accountKey,
+            aliases: ident.aliases,
+          });
+        }
+      }
       const row = await connectorRepo.getAccount(tx, id);
       if (!row) throw new Error('connector account vanished after insert');
       return toConnectorView(row, req.projectIds, []);

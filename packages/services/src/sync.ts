@@ -183,6 +183,10 @@ export async function syncConnector(
             secret,
             stream,
             cursor,
+            identities: setup.identities.map((i) => ({
+              accountKey: i.accountKey,
+              aliases: i.aliases,
+            })),
             backfillFrom,
             now,
             fetch: deps.fetch ?? fetch,

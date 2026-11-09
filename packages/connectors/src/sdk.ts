@@ -43,6 +43,8 @@ export interface SyncInput<C> {
   stream: string;
   /** What this stream returned last time; `null` on the first sync (a backfill). */
   cursor: Cursor;
+  /** The owner's identities in this source, for "is this mine?" filters (spec §8.3). */
+  identities: { accountKey: string; aliases: string[] }[];
   /** Earliest day to fetch when there's no cursor yet (YYYY-MM-DD). */
   backfillFrom: string;
   now: Date;
@@ -68,6 +70,8 @@ export interface Connector<C = unknown> {
   /** The record `source` key for this account, e.g. 'github:github.com'. */
   sourceKey(config: C): string;
   sync(input: SyncInput<C>): Promise<SyncPage>;
+  /** The identity implied by the config (e.g. the GitHub login), mapped when connecting. */
+  defaultIdentity?(config: C): { accountKey: string; aliases: string[] } | null;
 }
 
 export const defineConnector = <C>(c: Connector<C>): Connector<C> => c;
