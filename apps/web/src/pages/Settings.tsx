@@ -230,71 +230,153 @@ function Connectors() {
   );
 }
 
-interface GithubForm {
-  host: string;
-  login: string;
-  includeOwners: string;
-  excludeOwners: string;
+// Per-kind connector forms. Each field maps to one key of the connector's config; lists are
+// edited as comma-separated text. Kinds not listed here fall back to raw JSON.
+
+interface FieldSpec {
+  key: string;
+  label: string;
+  hint?: string;
+  kind: 'text' | 'list' | 'select';
+  options?: string[];
+  required?: boolean;
+  /** Part of the source key: fixed once connected. */
+  identity?: boolean;
+  placeholder?: string;
+  initial?: string;
 }
 
-const githubFromConfig = (c: Record<string, unknown>): GithubForm => ({
-  host: String(c.host ?? 'github.com'),
-  login: String(c.login ?? ''),
-  includeOwners: ((c.includeOwners as string[] | undefined) ?? []).join(', '),
-  excludeOwners: ((c.excludeOwners as string[] | undefined) ?? []).join(', '),
-});
+const ATLASSIAN: FieldSpec[] = [
+  {
+    key: 'baseUrl',
+    label: 'Base URL',
+    kind: 'text',
+    required: true,
+    identity: true,
+    placeholder: 'https://jira.example.com',
+  },
+  { key: 'login', label: 'Username', kind: 'text', required: true, hint: 'Your username there' },
+  {
+    key: 'auth',
+    label: 'Token type',
+    kind: 'select',
+    options: ['bearer', 'basic'],
+    initial: 'bearer',
+    hint: 'bearer: a personal access token; basic: username + API token',
+  },
+];
 
-const githubToConfig = (f: GithubForm, base: Record<string, unknown> = {}) => ({
+const FORMS: Record<string, FieldSpec[]> = {
+  github: [
+    {
+      key: 'host',
+      label: 'Host',
+      kind: 'text',
+      required: true,
+      identity: true,
+      initial: 'github.com',
+      hint: 'github.com, or your GitHub Enterprise host',
+    },
+    {
+      key: 'login',
+      label: 'Login',
+      kind: 'text',
+      required: true,
+      hint: 'Your username on that host',
+    },
+    {
+      key: 'includeOwners',
+      label: 'Only these owners',
+      kind: 'list',
+      placeholder: 'acme, acme-labs',
+      hint: 'Users or orgs, comma-separated. Empty: all.',
+    },
+    {
+      key: 'excludeOwners',
+      label: 'Never these owners',
+      kind: 'list',
+      hint: 'e.g. your personal account',
+    },
+  ],
+  jira: [
+    ...ATLASSIAN,
+    {
+      key: 'watchProjects',
+      label: 'Watched projects',
+      kind: 'list',
+      placeholder: 'PROJ, OPS',
+      hint: "Other people's new issues, status changes and comments there count too",
+    },
+  ],
+  confluence: [
+    ...ATLASSIAN.map((f) =>
+      f.key === 'baseUrl' ? { ...f, placeholder: 'https://wiki.example.com' } : f,
+    ),
+    {
+      key: 'excludeAncestorIds',
+      label: 'Skip pages under',
+      kind: 'list',
+      hint: 'Page IDs, e.g. your work-log tree',
+    },
+  ],
+};
+
+type FormValues = Record<string, string>;
+
+const formFromConfig = (specs: FieldSpec[], c: Record<string, unknown>): FormValues =>
+  Object.fromEntries(
+    specs.map((f) => {
+      const v = c[f.key];
+      return [f.key, Array.isArray(v) ? v.join(', ') : v != null ? String(v) : (f.initial ?? '')];
+    }),
+  );
+
+const configFromForm = (specs: FieldSpec[], v: FormValues, base: Record<string, unknown> = {}) => ({
   ...base,
-  host: f.host.trim(),
-  login: f.login.trim(),
-  includeOwners: list(f.includeOwners),
-  excludeOwners: list(f.excludeOwners),
+  ...Object.fromEntries(
+    specs.map((f) => [f.key, f.kind === 'list' ? list(v[f.key] ?? '') : (v[f.key] ?? '').trim()]),
+  ),
 });
 
-function GithubFields({
+function KindFields({
+  specs,
   form,
   set,
-  lockHost,
+  editing,
 }: {
-  form: GithubForm;
-  set: (f: GithubForm) => void;
-  lockHost?: boolean;
+  specs: FieldSpec[];
+  form: FormValues;
+  set: (f: FormValues) => void;
+  editing?: boolean;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <Field label="Host" hint="github.com, or your GitHub Enterprise host">
-        <input
-          required
-          disabled={lockHost}
-          value={form.host}
-          onChange={(e) => set({ ...form, host: e.target.value })}
-          className={`w-full ${inputClass}`}
-        />
-      </Field>
-      <Field label="Login" hint="Your username on that host">
-        <input
-          required
-          value={form.login}
-          onChange={(e) => set({ ...form, login: e.target.value })}
-          className={`w-full ${inputClass}`}
-        />
-      </Field>
-      <Field label="Only these owners" hint="Users or orgs, comma-separated. Empty: all.">
-        <input
-          value={form.includeOwners}
-          onChange={(e) => set({ ...form, includeOwners: e.target.value })}
-          placeholder="acme, acme-labs"
-          className={`w-full ${inputClass}`}
-        />
-      </Field>
-      <Field label="Never these owners" hint="e.g. your personal account">
-        <input
-          value={form.excludeOwners}
-          onChange={(e) => set({ ...form, excludeOwners: e.target.value })}
-          className={`w-full ${inputClass}`}
-        />
-      </Field>
+      {specs.map((f) => (
+        <Field key={f.key} label={f.label} {...(f.hint ? { hint: f.hint } : {})}>
+          {f.kind === 'select' ? (
+            <select
+              value={form[f.key] ?? ''}
+              onChange={(e) => set({ ...form, [f.key]: e.target.value })}
+              className={`w-full ${inputClass}`}
+            >
+              {f.options?.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              required={f.required}
+              disabled={editing && f.identity}
+              value={form[f.key] ?? ''}
+              placeholder={f.placeholder}
+              onChange={(e) => set({ ...form, [f.key]: e.target.value })}
+              className={`w-full ${inputClass}`}
+            />
+          )}
+        </Field>
+      ))}
     </div>
   );
 }
@@ -336,7 +418,8 @@ function AddConnector({ kinds, onDone }: { kinds: ConnectorKindView[]; onDone: (
   const { projects } = useProject();
   const [kind, setKind] = useState(kinds[0]?.kind ?? '');
   const [name, setName] = useState('');
-  const [gh, setGh] = useState<GithubForm>(githubFromConfig({}));
+  const [form, setForm] = useState<FormValues>(() => formFromConfig(FORMS[kind] ?? [], {}));
+  const specs = FORMS[kind];
   const [rawConfig, setRawConfig] = useState('{}');
   const [secret, setSecret] = useState('');
   const [projectIds, setProjectIds] = useState<string[]>(projects[0] ? [projects[0].id] : []);
@@ -347,7 +430,7 @@ function AddConnector({ kinds, onDone }: { kinds: ConnectorKindView[]; onDone: (
   const add = useMutation({
     mutationFn: () => {
       let config: Record<string, unknown>;
-      if (kind === 'github') config = githubToConfig(gh);
+      if (specs) config = configFromForm(specs, form);
       else config = JSON.parse(rawConfig) as Record<string, unknown>;
       return api.addConnector({
         kind,
@@ -382,7 +465,10 @@ function AddConnector({ kinds, onDone }: { kinds: ConnectorKindView[]; onDone: (
           <Field label="Kind">
             <select
               value={kind}
-              onChange={(e) => setKind(e.target.value)}
+              onChange={(e) => {
+                setKind(e.target.value);
+                setForm(formFromConfig(FORMS[e.target.value] ?? [], {}));
+              }}
               className={`w-full ${inputClass}`}
             >
               {kinds.map((k) => (
@@ -400,8 +486,8 @@ function AddConnector({ kinds, onDone }: { kinds: ConnectorKindView[]; onDone: (
             />
           </Field>
         </div>
-        {kind === 'github' ? (
-          <GithubFields form={gh} set={setGh} />
+        {specs ? (
+          <KindFields specs={specs} form={form} set={setForm} />
         ) : (
           <Field label="Config (JSON)">
             <textarea
@@ -560,17 +646,17 @@ function EditConnector({ c, onDone }: { c: ConnectorView; onDone: () => void }) 
   const { projects } = useProject();
   const invalidate = useInvalidate();
   const [name, setName] = useState(c.displayName);
-  const [gh, setGh] = useState(githubFromConfig(c.config));
+  const specs = FORMS[c.kind];
+  const [form, setForm] = useState<FormValues>(() => formFromConfig(specs ?? [], c.config));
   const [raw, setRaw] = useState(JSON.stringify(c.config, null, 2));
   const [projectIds, setProjectIds] = useState(c.projectIds);
   const save = useMutation({
     mutationFn: () =>
       api.updateConnector(c.id, {
         displayName: name,
-        config:
-          c.kind === 'github'
-            ? githubToConfig(gh, c.config)
-            : (JSON.parse(raw) as Record<string, unknown>),
+        config: specs
+          ? configFromForm(specs, form, c.config)
+          : (JSON.parse(raw) as Record<string, unknown>),
         projectIds,
       }),
     onSuccess: () => {
@@ -593,8 +679,8 @@ function EditConnector({ c, onDone }: { c: ConnectorView; onDone: () => void }) 
           className={`w-full ${inputClass}`}
         />
       </Field>
-      {c.kind === 'github' ? (
-        <GithubFields form={gh} set={setGh} lockHost />
+      {specs ? (
+        <KindFields specs={specs} form={form} set={setForm} editing />
       ) : (
         <Field label="Config (JSON)">
           <textarea

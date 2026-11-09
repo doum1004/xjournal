@@ -1,5 +1,11 @@
 export { builtinConnectors } from './builtin';
 export {
+  type ConfluenceConfig as ConfluencePagesConfig,
+  confluence,
+  contentRecord,
+  zConfluenceConfig,
+} from './confluence';
+export {
   type ConfluenceConfig,
   type ConfluenceWorklogScan,
   cellOf,
@@ -19,6 +25,7 @@ export {
   ownerAllowed,
   zGithubConfig,
 } from './github';
+export { issueRecords, type JiraConfig, jira, jqlFor, zJiraConfig } from './jira';
 export {
   type AnyConnector,
   type AuthType,
