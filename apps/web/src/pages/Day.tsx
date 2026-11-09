@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import type { DayView } from '@xjournal/core';
 import { api } from '../api';
 import { RecordItem } from '../components/RecordItem';
-import { ReportBody } from '../components/ReportView';
+import { ReportBody, useGenerate } from '../components/ReportView';
 import { Badge, Button, Empty, ErrorNote, Panel } from '../components/ui';
 import { addDays, longDate, today } from '../dates';
 import { useProject } from '../project';
@@ -125,7 +125,11 @@ export function DayPage({
         </div>
       </div>
       {day.data && <BundleStrip day={day.data} projectId={project.id} />}
-      {day.data?.daily?.versionId && <DailyReport versionId={day.data.daily.versionId} />}
+      {day.data?.daily?.versionId ? (
+        <DailyReport versionId={day.data.daily.versionId} />
+      ) : day.data && day.data.unlinked.length > 0 ? (
+        <WriteDaily projectId={project.id} date={date} />
+      ) : null}
       {day.error ? (
         <ErrorNote error={day.error} />
       ) : records.length === 0 && !day.isPending ? (
@@ -151,6 +155,39 @@ function DailyReport({ versionId }: { versionId: string }) {
     <section className="mb-4 rounded-md border border-line p-3">
       <h2 className="mb-2 text-sm font-semibold">Daily report</h2>
       <ReportBody v={v.data} compact />
+    </section>
+  );
+}
+
+function WriteDaily({ projectId, date }: { projectId: string; date: string }) {
+  const ai = useQuery({ queryKey: ['ai'], queryFn: api.ai });
+  const resolve = useMutation({ mutationFn: () => api.resolveReport(projectId, 'daily', date) });
+  const generate = useGenerate(resolve.data?.reportId);
+  const busy = resolve.isPending || generate.isPending;
+  return (
+    <section className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-dashed border-line p-3 text-sm">
+      <span className="text-muted">No daily report for this day yet.</span>
+      {ai.data?.hasKey ? (
+        <Button
+          variant="primary"
+          disabled={busy}
+          onClick={async () => {
+            const r = await resolve.mutateAsync();
+            generate.mutate({ reportId: r.reportId });
+          }}
+        >
+          {busy ? 'Writing…' : 'Write the daily report'}
+        </Button>
+      ) : (
+        <span className="text-muted">
+          Ask your agent to “run my morning work log”, or add a Claude API key in Settings → AI to
+          write it here.
+        </span>
+      )}
+      {(resolve.error || generate.error) && <ErrorNote error={resolve.error ?? generate.error} />}
+      {generate.data && 'queued' in generate.data && (
+        <span className="text-muted">Writing in the background…</span>
+      )}
     </section>
   );
 }

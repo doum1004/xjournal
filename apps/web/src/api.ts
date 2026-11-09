@@ -202,6 +202,50 @@ export const api = {
       message?: string;
     }>('POST', `/report-versions/${versionId}/publish`, { confirm: true, force }),
   status: (projectId?: string) => request<StatusView>('GET', `/status${qs({ projectId })}`),
+  resolveReport: (projectId: string, kind: string, date: string) =>
+    request<ReportRef>('POST', `/projects/${projectId}/reports/resolve`, { kind, date }),
+  generate: (reportId: string, instructions?: string) =>
+    request<Queued>('POST', `/reports/${reportId}/generate`, instructions ? { instructions } : {}),
+  refreshReports: (projectId: string) =>
+    request<Queued>('POST', `/projects/${projectId}/reports/refresh`),
+  exportMarkdown: async (versionId: string) => {
+    const token = tokenStore.get();
+    const res = await fetch(`/api/v1/report-versions/${versionId}/export`, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError(res.status, 'internal', 'Export failed');
+    const name =
+      /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'report.md';
+    return { name, text: await res.text() };
+  },
+  stats: (projectId: string, from: string, to: string) =>
+    request<{ items: { metric: string; value: number; description: string }[] }>(
+      'GET',
+      `/stats${qs({ projectId, from, to })}`,
+    ),
+  guidance: (projectId?: string) =>
+    request<{
+      items: {
+        id: string;
+        scope: string;
+        projectId: string | null;
+        reportKind: string | null;
+        text: string;
+        visibility: string;
+        createdAt: string;
+      }[];
+    }>('GET', `/guidance${qs({ projectId })}`),
+  addGuidance: (body: {
+    scope: string;
+    text: string;
+    projectId?: string;
+    reportKind?: string;
+    reportId?: string;
+  }) => request<{ guidanceId: string }>('POST', '/guidance', body),
+  archiveGuidance: (id: string) => request<void>('DELETE', `/guidance/${id}`),
+  ai: () => request<{ hasKey: boolean; model: string }>('GET', '/ai'),
+  setAiKey: (key: string) => request<void>('PUT', '/ai/key', { key }),
+  removeAiKey: () => request<void>('DELETE', '/ai/key'),
 
   // Settings (api.md §3.2a)
   workspace: () => request<WorkspaceView>('GET', '/workspace'),

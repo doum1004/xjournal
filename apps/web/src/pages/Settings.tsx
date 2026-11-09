@@ -14,13 +14,14 @@ import { useProject } from '../project';
 // Settings (plan.md M2): workspace, projects, connectors and identities, all manageable
 // without the CLI. Credentials are write-only: entered once, never shown again (spec §8.7).
 
-export type SettingsTab = 'connectors' | 'rules' | 'projects' | 'workspace' | 'identities';
+export type SettingsTab = 'connectors' | 'rules' | 'projects' | 'workspace' | 'identities' | 'ai';
 export const settingsTabs: SettingsTab[] = [
   'connectors',
   'rules',
   'projects',
   'workspace',
   'identities',
+  'ai',
 ];
 
 const TAB_LABEL: Record<SettingsTab, string> = {
@@ -29,6 +30,7 @@ const TAB_LABEL: Record<SettingsTab, string> = {
   projects: 'Projects',
   workspace: 'Workspace',
   identities: 'Identities',
+  ai: 'AI',
 };
 
 export function SettingsPage({
@@ -63,6 +65,7 @@ export function SettingsPage({
       {tab === 'projects' && <Projects />}
       {tab === 'workspace' && <Workspace />}
       {tab === 'identities' && <Identities />}
+      {tab === 'ai' && <Ai />}
     </div>
   );
 }
@@ -1417,5 +1420,75 @@ function RuleRowView({ r, slug }: { r: RuleView; slug: string }) {
         e ? <ErrorNote key={i} error={e} /> : null,
       )}
     </li>
+  );
+}
+
+// ------------------------------------------------------------------------------------------
+// AI: the key for direct report generation (plan.md M4)
+// ------------------------------------------------------------------------------------------
+
+function Ai() {
+  const invalidate = useInvalidate();
+  const ai = useQuery({ queryKey: ['ai'], queryFn: api.ai });
+  const [key, setKey] = useState('');
+  const save = useMutation({
+    mutationFn: () => api.setAiKey(key.trim()),
+    onSuccess: () => {
+      setKey('');
+      return invalidate('ai');
+    },
+  });
+  const remove = useMutation({ mutationFn: api.removeAiKey, onSuccess: () => invalidate('ai') });
+  return (
+    <Panel>
+      <h2 className="font-semibold">Claude API key</h2>
+      <p className="mt-1 text-sm text-muted">
+        With a key, the hub writes reports itself (Generate, Regenerate, Write all due reports),
+        from the same evidence and through the same checks as an agent. Without one, reports come
+        from your agent over MCP.
+      </p>
+      {ai.error && <ErrorNote error={ai.error} />}
+      {ai.data && (
+        <p className="mt-3 text-sm">
+          {ai.data.hasKey ? <Badge tone="accent">key stored</Badge> : <Badge>no key</Badge>}{' '}
+          <span className="text-muted">
+            Model: <code className="font-mono">{ai.data.model}</code> (set HUB_MODEL to change)
+          </span>
+        </p>
+      )}
+      <form
+        className="mt-3 flex flex-wrap items-end gap-2"
+        autoComplete="off"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Field
+          label={ai.data?.hasKey ? 'Replace the key' : 'API key'}
+          hint="Kept in the OS keychain and never shown again."
+        >
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            autoComplete="new-password"
+            placeholder="sk-ant-…"
+            className={`w-80 ${inputClass}`}
+          />
+        </Field>
+        <Button type="submit" variant="primary" disabled={!key.trim() || save.isPending}>
+          Save key
+        </Button>
+        {ai.data?.hasKey && (
+          <ConfirmButton
+            label="Remove key"
+            confirm="Click again to remove"
+            onConfirm={() => remove.mutate()}
+          />
+        )}
+      </form>
+      {(save.error || remove.error) && <ErrorNote error={save.error ?? remove.error} />}
+    </Panel>
   );
 }

@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { useState } from 'react';
 import { api } from '../api';
 import { ReportBody } from '../components/ReportView';
-import { Badge, Empty, ErrorNote, Panel } from '../components/ui';
+import { Badge, Button, Empty, ErrorNote, inputClass, Panel } from '../components/ui';
 import { addDays, today } from '../dates';
 import { useProject } from '../project';
 
@@ -60,6 +61,11 @@ export function ReportsPage() {
           </div>
         )}
       </Panel>
+      {status.data && status.data.due.length > 0 && <WriteDue projectId={project.id} />}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Stats projectId={project.id} />
+        <Guidance projectId={project.id} />
+      </div>
       {reports.error && <ErrorNote error={reports.error} />}
       {[...byKind.entries()]
         .sort(([a], [b]) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b))
@@ -125,6 +131,196 @@ export function ReportPage({ versionId }: { versionId: string }) {
         )}
       </div>
       <ReportBody v={v.data} />
+    </Panel>
+  );
+}
+
+function WriteDue({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
+  const ai = useQuery({ queryKey: ['ai'], queryFn: api.ai });
+  const refresh = useMutation({
+    mutationFn: () => api.refreshReports(projectId),
+    onSuccess: () => {
+      const again = () => {
+        for (const k of ['reports', 'status', 'days', 'day'])
+          qc.invalidateQueries({ queryKey: [k] });
+      };
+      again();
+      for (const ms of [10000, 30000, 60000, 120000]) setTimeout(again, ms);
+    },
+  });
+  if (!ai.data?.hasKey) {
+    return (
+      <Panel>
+        <p className="text-sm text-muted">
+          To write these here without an agent, add a Claude API key in Settings → AI.
+        </p>
+      </Panel>
+    );
+  }
+  const r = refresh.data as
+    | { queued?: number; due?: number; written?: unknown[]; failed?: { error: string }[] }
+    | undefined;
+  return (
+    <Panel>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="primary" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+          {refresh.isPending ? 'Writing…' : 'Write all due reports'}
+        </Button>
+        <span className="text-sm text-muted">
+          The hub writes them with its own model call, oldest first.
+        </span>
+      </div>
+      {refresh.error && <ErrorNote error={refresh.error} />}
+      {r?.queued != null && (
+        <p className="mt-2 text-sm text-muted">
+          {r.queued} of {r.due} queued; they appear below as they are written.
+        </p>
+      )}
+      {r?.written && <p className="mt-2 text-sm text-muted">Wrote {r.written.length}.</p>}
+      {r?.failed?.map((f) => (
+        <ErrorNote key={f.error} error={f.error} />
+      ))}
+    </Panel>
+  );
+}
+
+const METRICS: [string, string][] = [
+  ['prs_merged', 'PRs merged'],
+  ['prs_opened', 'PRs opened'],
+  ['reviews', 'Reviews given'],
+  ['commits', 'Commits'],
+  ['issues_created', 'Issues created'],
+  ['issue_changes', 'Issue changes'],
+  ['pages_edited', 'Pages edited'],
+  ['notes', 'Notes'],
+  ['active_days', 'Active days'],
+];
+
+function Stats({ projectId }: { projectId: string }) {
+  const t = today();
+  const week = useQuery({
+    queryKey: ['stats', projectId, 7],
+    queryFn: () => api.stats(projectId, addDays(t, -7), addDays(t, 1)),
+  });
+  const month = useQuery({
+    queryKey: ['stats', projectId, 30],
+    queryFn: () => api.stats(projectId, addDays(t, -30), addDays(t, 1)),
+  });
+  const value = (q: typeof week, m: string) =>
+    q.data?.items.find((x) => x.metric === m)?.value ?? '—';
+  return (
+    <Panel>
+      <h2 className="mb-2 font-semibold">Your numbers</h2>
+      <table className="w-full text-sm">
+        <thead className="text-xs text-muted">
+          <tr>
+            <th className="py-1 text-left font-normal">Metric</th>
+            <th className="py-1 text-right font-normal">7 days</th>
+            <th className="py-1 text-right font-normal">30 days</th>
+          </tr>
+        </thead>
+        <tbody>
+          {METRICS.map(([m, label]) => (
+            <tr key={m} className="border-t border-line">
+              <td className="py-1">{label}</td>
+              <td className="py-1 text-right tabular-nums">{value(week, m)}</td>
+              <td className="py-1 text-right tabular-nums">{value(month, m)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-2 text-xs text-muted">Counted from the evidence, as reports cite them.</p>
+    </Panel>
+  );
+}
+
+function Guidance({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
+  const g = useQuery({ queryKey: ['guidance', projectId], queryFn: () => api.guidance(projectId) });
+  const [text, setText] = useState('');
+  const [scope, setScope] = useState('project');
+  const done = () => {
+    qc.invalidateQueries({ queryKey: ['guidance'] });
+    qc.invalidateQueries({ queryKey: ['status'] });
+  };
+  const add = useMutation({
+    mutationFn: () =>
+      api.addGuidance(
+        scope.startsWith('kind:')
+          ? { scope: 'report_kind', reportKind: scope.slice(5), projectId, text: text.trim() }
+          : scope === 'workspace'
+            ? { scope: 'workspace', text: text.trim() }
+            : { scope: 'project', projectId, text: text.trim() },
+      ),
+    onSuccess: () => {
+      setText('');
+      done();
+    },
+  });
+  const archive = useMutation({
+    mutationFn: (id: string) => api.archiveGuidance(id),
+    onSuccess: done,
+  });
+  const label = (x: { scope: string; reportKind: string | null }) =>
+    x.scope === 'report_kind' ? `${x.reportKind} reports` : x.scope;
+  return (
+    <Panel>
+      <h2 className="mb-1 font-semibold">Guidance</h2>
+      <p className="mb-2 text-xs text-muted">
+        Instructions every future report follows, without changing evidence. The most specific wins.
+      </p>
+      {g.error && <ErrorNote error={g.error} />}
+      <ul className="mb-3 divide-y divide-line text-sm">
+        {g.data?.items.map((x) => (
+          <li key={x.id} className="flex items-start justify-between gap-2 py-1.5">
+            <span>
+              <Badge>{label(x)}</Badge> {x.text}
+            </span>
+            <Button
+              variant="ghost"
+              className="px-2 py-0.5 text-xs"
+              onClick={() => archive.mutate(x.id)}
+            >
+              Remove
+            </Button>
+          </li>
+        ))}
+        {g.data?.items.length === 0 && <li className="py-1 text-muted">None yet.</li>}
+      </ul>
+      <form
+        className="space-y-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) add.mutate();
+        }}
+      >
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={2}
+          placeholder="e.g. Leave out routine standups. Lead with what shipped."
+          className={`w-full ${inputClass}`}
+        />
+        <div className="flex gap-2">
+          <select
+            aria-label="Applies to"
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            className={inputClass}
+          >
+            <option value="project">this project</option>
+            <option value="kind:daily">daily reports</option>
+            <option value="kind:weekly">weekly reports</option>
+            <option value="kind:monthly">monthly reports</option>
+            <option value="workspace">every project</option>
+          </select>
+          <Button type="submit" variant="primary" disabled={!text.trim() || add.isPending}>
+            Add
+          </Button>
+        </div>
+        {(add.error || archive.error) && <ErrorNote error={add.error ?? archive.error} />}
+      </form>
     </Panel>
   );
 }
