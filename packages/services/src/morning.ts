@@ -2,6 +2,7 @@ import { connectorRepo, type HubDb, withSystem } from '@xjournal/db';
 import { type RebuildSummary, rebuildBundles } from './bundles';
 import type { ConnectorDeps } from './connectors';
 import { messageOf } from './connectors';
+import { markStaleReports } from './reports';
 import { type SyncResult, syncConnector } from './sync';
 
 // The morning run (spec §5.1, Flow A steps 2–3): sync every connector incrementally, then
@@ -24,6 +25,8 @@ export interface MorningRunResult {
     | { connectorAccountId: string; source: string; status: 'error'; error: string }
   )[];
   bundles: RebuildSummary;
+  /** Reports marked stale by this run. */
+  staleReports: number;
 }
 
 export async function morningRun(
@@ -55,5 +58,13 @@ export async function morningRun(
   }
 
   const bundles = await rebuildBundles(db, { now, ...(opts.days ? { days: opts.days } : {}) });
-  return { startedAt: started.toISOString(), finishedAt: new Date().toISOString(), syncs, bundles };
+  // Reports built on changed bundles are behind now (schema.md §7).
+  const staleReports = await markStaleReports(db);
+  return {
+    startedAt: started.toISOString(),
+    finishedAt: new Date().toISOString(),
+    syncs,
+    bundles,
+    staleReports,
+  };
 }

@@ -131,6 +131,7 @@
         "@xjournal/connectors": "workspace:*",
         "@xjournal/core": "workspace:*",
         "@xjournal/db": "workspace:*",
+        "@xjournal/reports": "workspace:*",
         "@xjournal/secrets": "workspace:*",
         "zod": "4.6.7",
       },

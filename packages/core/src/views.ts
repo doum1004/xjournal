@@ -1,4 +1,12 @@
-import type { InputTier, NoteKind, RecordKind, RoutingStatus, Visibility } from './enums';
+import type {
+  InputTier,
+  MemberRole,
+  NoteKind,
+  RecordKind,
+  ReportKind,
+  RoutingStatus,
+  Visibility,
+} from './enums';
 
 /** A record as the API returns it (api.md §2). */
 export interface RecordView {
@@ -154,4 +162,100 @@ export interface IdentityView {
   source: string;
   accountKey: string;
   aliases: string[];
+}
+
+// ------------------------------------------------------------------------------------------
+// Reports (api.md §3.5, §4)
+// ------------------------------------------------------------------------------------------
+
+export type ReportAudienceInput = 'me' | 'project';
+
+export interface ReportRef {
+  /** `{reportId, kind, period, status, currentVersionId}` from resolve. */
+  reportId: string;
+  kind: ReportKind;
+  projectId: string | null;
+  period: { start: string; endExcl: string; title: string };
+  audienceKey: string;
+  status: 'current' | 'stale' | 'superseded' | 'rejected';
+  currentVersionId: string | null;
+}
+
+export interface CitationView {
+  anchor: string;
+  type: 'record_revision' | 'work_item' | 'report_version' | 'stat';
+  id: string;
+  /** Resolved for display: a record's title and link, an input report's title, a stat value. */
+  title: string | null;
+  url: string | null;
+}
+
+export interface ReportVersionView extends ReportRef {
+  versionId: string;
+  versionNo: number;
+  bodyMd: string;
+  path: 'agent' | 'direct' | 'import';
+  client: string | null;
+  model: string | null;
+  templateVersion: string;
+  changeReason: 'factual' | 'editorial' | 'initial';
+  changeSummary: string | null;
+  createdAt: string;
+  citations: CitationView[];
+}
+
+export interface StatView {
+  metric: string;
+  value: number;
+  description: string;
+}
+
+export interface ReportInputs {
+  report: ReportRef & { audience: { id: string; name: string }[] };
+  template: { version: string; sections: string[]; instructions: string };
+  guidance: { id: string; versionId: string; scope: string; text: string }[];
+  bundles?: {
+    date: string;
+    hash: string;
+    coverage: Coverage;
+    workItems: { id: string; title: string; records: RecordView[] }[];
+    unlinked: RecordView[];
+  }[];
+  inputReports?: {
+    versionId: string;
+    kind: ReportKind;
+    period: { start: string; endExcl: string };
+    bodyMd: string;
+    status: string;
+    statements: { anchor: string; text: string }[];
+  }[];
+  context?: RecordView[];
+  previous?: { versionId: string; bodyMd: string };
+  stats: StatView[];
+  gaps: { missingDays: string[]; staleInputs: string[]; coverage: Coverage };
+  refFormat: string;
+  inputHash: string;
+}
+
+export interface DueReport {
+  kind: ReportKind;
+  date: string;
+  projectId: string;
+  reason: 'missing' | 'stale';
+}
+
+export interface StatusView {
+  projects: { id: string; slug: string; name: string; role: MemberRole }[];
+  /** What a morning run should write, oldest first (spec §5.1). */
+  due: DueReport[];
+  missingDays: { projectId: string; date: string }[];
+  staleReports: { reportId: string; kind: ReportKind; date: string; projectId: string | null }[];
+  inboxCount: number;
+  connectors: {
+    id: string;
+    source: string;
+    status: string;
+    lastSuccessAt: string | null;
+    error: string | null;
+  }[];
 }

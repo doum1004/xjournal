@@ -38,6 +38,19 @@ export {
   search,
 } from './records';
 export {
+  addGuidance,
+  archiveGuidance,
+  getReport,
+  getReportById,
+  getReportInputs,
+  listGuidance,
+  listReports,
+  listReportVersions,
+  markStaleReports,
+  resolveReport,
+  saveReportVersion,
+} from './reports';
+export {
   applyRules,
   createRule,
   deactivateRule,
@@ -56,6 +69,7 @@ export {
   updateWorkspace,
   type WorkspaceView,
 } from './settings';
+export { getStatus, type StatusOptions } from './status';
 export {
   DEFAULT_BACKFILL_DAYS,
   type StreamSyncResult,

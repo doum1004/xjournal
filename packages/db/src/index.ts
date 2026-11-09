@@ -19,6 +19,8 @@ export type { ProjectRow } from './repos/projects';
 export * as projectRepo from './repos/projects';
 export type { RecordRow, RevisionRow } from './repos/records';
 export * as recordRepo from './repos/records';
+export type { ReportRow, ReportVersionRow } from './repos/reports';
+export * as reportRepo from './repos/reports';
 export type { RuleRow } from './repos/rules';
 export * as ruleRepo from './repos/rules';
 export * as schema from './schema';

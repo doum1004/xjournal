@@ -1,5 +1,11 @@
 import type { DbHandle, HubDb } from '@xjournal/db';
-import { type ConnectorDeps, morningRun, rebuildBundles, syncConnector } from '@xjournal/services';
+import {
+  type ConnectorDeps,
+  markStaleReports,
+  morningRun,
+  rebuildBundles,
+  syncConnector,
+} from '@xjournal/services';
 import { fromPglite, PgBoss } from 'pg-boss';
 
 /**
@@ -87,6 +93,7 @@ export async function startJobs(boss: PgBoss, opts: JobsOptions): Promise<Jobs> 
     });
     // New evidence: bring the affected bundles up to date right away.
     await rebuildBundles(opts.db);
+    await markStaleReports(opts.db);
     opts.log('info', 'connector sync finished', { source: r.source, status: r.status });
   });
 

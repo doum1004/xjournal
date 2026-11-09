@@ -8,6 +8,8 @@ export type ErrorCode =
   | 'not_found'
   | 'conflict'
   | 'not_initialized'
+  | 'stale_input'
+  | 'validation_failed'
   | 'internal';
 
 /** A failure the adapters (REST, CLI, MCP) turn into a problem response or message. */
@@ -17,6 +19,8 @@ export class ServiceError extends Error {
     readonly code: ErrorCode,
     message: string,
     readonly errors?: { path: string; message: string }[],
+    /** Extra fields for the problem response, e.g. `validation` (api.md §4.4). */
+    readonly data?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'ServiceError';

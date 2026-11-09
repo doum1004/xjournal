@@ -14,7 +14,7 @@ export function problem(
   status: number,
   code: string,
   title: string,
-  extra: { detail?: string; errors?: unknown } = {},
+  extra: { detail?: string; errors?: unknown; [k: string]: unknown } = {},
 ) {
   return Response.json(
     { type: 'about:blank', title, status, code, ...extra },
@@ -56,7 +56,10 @@ export function createApi(deps: ApiDeps) {
 
   api.onError((err) => {
     if (err instanceof svc.ServiceError) {
-      return problem(err.status, err.code, err.message, err.errors ? { errors: err.errors } : {});
+      return problem(err.status, err.code, err.message, {
+        ...(err.errors ? { errors: err.errors } : {}),
+        ...(err.data ?? {}),
+      });
     }
     console.error(JSON.stringify({ level: 'error', msg: 'unhandled', error: String(err) }));
     return problem(500, 'internal', 'Internal error');
@@ -166,6 +169,7 @@ export function createApi(deps: ApiDeps) {
     if (!jobs) {
       const r = await svc.syncConnector(ctx, connectors, id, opts);
       await svc.rebuildBundles(ctx.db);
+      await svc.markStaleReports(ctx.db);
       return c.json(r);
     }
     // Check access now, so a bad ID fails here rather than in the worker.
