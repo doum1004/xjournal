@@ -695,3 +695,24 @@ export const isReportKind = (k: string): k is ReportKind =>
   (reportKinds as readonly string[]).includes(k);
 export type { RecordView };
 export { isIsoDate };
+
+export const zStatsQuery = z.object({ projectId: z.string().min(1), from: zIsoDate, to: zIsoDate });
+
+/** `GET /stats` / `get_stats`: the deterministic counts for a project and range (spec §5.8). */
+export async function getStats(ctx: Ctx, input: unknown): Promise<StatView[]> {
+  const q = parse(zStatsQuery, input);
+  return asCaller(ctx, async (tx) => {
+    if (!(await projectRepo.findProject(tx, q.projectId))) throw notFound('Project not found');
+    const counts = await reportRepo.statsFor(tx, {
+      projectId: q.projectId,
+      userId: ctx.actor.userId,
+      from: q.from,
+      toExcl: q.to,
+    });
+    return Object.entries(counts).map(([metric, value]) => ({
+      metric,
+      value,
+      description: STAT_TEXT[metric] ?? metric,
+    }));
+  });
+}

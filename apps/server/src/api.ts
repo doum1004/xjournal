@@ -214,6 +214,54 @@ export function createApi(deps: ApiDeps) {
   );
   api.post('/rules/apply', async (c) => c.json(await svc.applyRules(c.get('ctx'))));
 
+  // Reports (api.md §3.5, §4) and status (§3.4).
+  api.post('/projects/:p/reports/resolve', async (c) =>
+    c.json(
+      await svc.resolveReport(c.get('ctx'), {
+        ...((await body(c)) as Record<string, unknown>),
+        projectId: c.req.param('p'),
+      }),
+    ),
+  );
+  api.get('/projects/:p/reports', async (c) =>
+    c.json({ items: await svc.listReports(c.get('ctx'), c.req.param('p'), c.req.query()) }),
+  );
+  api.get('/reports/:r', async (c) =>
+    c.json(await svc.getReportById(c.get('ctx'), c.req.param('r'))),
+  );
+  api.get('/reports/:r/versions', async (c) =>
+    c.json({ items: await svc.listReportVersions(c.get('ctx'), c.req.param('r')) }),
+  );
+  api.get('/reports/:r/inputs', async (c) =>
+    c.json(await svc.getReportInputs(c.get('ctx'), c.req.param('r'))),
+  );
+  api.post('/reports/:r/versions', async (c) =>
+    c.json(await svc.saveReportVersion(c.get('ctx'), c.req.param('r'), await body(c)), 201),
+  );
+  api.get('/report-versions/:v', async (c) =>
+    c.json(await svc.getReport(c.get('ctx'), { versionId: c.req.param('v') })),
+  );
+  api.get('/report', async (c) => c.json(await svc.getReport(c.get('ctx'), c.req.query())));
+  api.get('/status', async (c) => {
+    const projectId = c.req.query('projectId');
+    return c.json(await svc.getStatus(c.get('ctx'), projectId ? { projectId } : {}));
+  });
+  api.get('/stats', async (c) =>
+    c.json({ items: await svc.getStats(c.get('ctx'), c.req.query()) }),
+  );
+
+  // Guidance (api.md §3.6).
+  api.get('/guidance', async (c) =>
+    c.json({ items: await svc.listGuidance(c.get('ctx'), c.req.query('projectId')) }),
+  );
+  api.post('/guidance', async (c) =>
+    c.json(await svc.addGuidance(c.get('ctx'), await body(c)), 201),
+  );
+  api.delete('/guidance/:id', async (c) => {
+    await svc.archiveGuidance(c.get('ctx'), c.req.param('id'));
+    return c.body(null, 204);
+  });
+
   // The morning run (spec §5.1): sync everything, rebuild bundles.
   api.post('/runs/morning', async (c) => {
     if (!jobs) return c.json(await svc.morningRun(c.get('ctx').db, connectors));

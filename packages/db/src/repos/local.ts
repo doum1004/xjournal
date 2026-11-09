@@ -76,3 +76,15 @@ export async function bootstrapLocal(
     created: true,
   };
 }
+
+/** The workspace a signed-in user acts in: the one they own, else their first membership. */
+export async function workspaceOfUser(db: HubDb, userId: string): Promise<string | null> {
+  const r = await db.execute<{ id: string }>(sql`
+    select id from (
+      select w.id, 0 as rank, w.id as tiebreak from workspaces w where w.owner_user_id = ${userId}
+      union all
+      select pm.workspace_id, 1, pm.workspace_id from project_members pm
+      where pm.user_id = ${userId} and pm.left_at is null
+    ) x order by rank, tiebreak limit 1`);
+  return r.rows[0]?.id ?? null;
+}

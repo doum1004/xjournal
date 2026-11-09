@@ -29,3 +29,10 @@ export async function localOwner(db: HubDb): Promise<LocalOwner> {
   }
   return owner;
 }
+
+/** The actor for a signed-in user (MCP over OAuth): their own workspace, else their first. */
+export async function actorForUser(db: HubDb, userId: string) {
+  const workspaceId = await localRepo.workspaceOfUser(db, userId);
+  if (!workspaceId) throw new ServiceError(403, 'forbidden_role', 'You are not in any workspace');
+  return { userId, workspaceId };
+}

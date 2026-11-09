@@ -87,12 +87,16 @@ export function createApp(deps: AppDeps) {
     ? requireMcpAuth(
         auth,
         (req, claims) =>
-          handleMcp(req, {
-            via: 'oauth',
-            userId: typeof claims.sub === 'string' ? claims.sub : null,
-            scopes: typeof claims.scope === 'string' ? claims.scope.split(' ') : [],
-            clientId: typeof claims.azp === 'string' ? claims.azp : undefined,
-          }),
+          handleMcp(
+            req,
+            {
+              via: 'oauth',
+              userId: typeof claims.sub === 'string' ? claims.sub : null,
+              scopes: typeof claims.scope === 'string' ? claims.scope.split(' ') : [],
+              clientId: typeof claims.azp === 'string' ? claims.azp : undefined,
+            },
+            { db: db.db },
+          ),
         { resource: new URL('/mcp', config.baseURL).toString() },
       )
     : null;
@@ -104,7 +108,11 @@ export function createApp(deps: AppDeps) {
       if (!token || !sameToken(token, config.localToken)) {
         return problem(401, 'unauthenticated', 'Missing or invalid token');
       }
-      return handleMcp(req, { via: 'local', userId: null, scopes: ['read', 'write'] });
+      return handleMcp(
+        req,
+        { via: 'local', userId: null, scopes: ['read', 'write'] },
+        { db: db.db },
+      );
     }
     if (!oauthMcp) return problem(503, 'unavailable', 'Authentication is not configured');
     return oauthMcp(req);
