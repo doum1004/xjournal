@@ -716,3 +716,123 @@ export async function getStats(ctx: Ctx, input: unknown): Promise<StatView[]> {
     }));
   });
 }
+
+// ------------------------------------------------------------------------------------------
+// Prototype migration (schema.md §11)
+// ------------------------------------------------------------------------------------------
+
+export interface ImportReview {
+  kind: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+  start: string;
+  body: string;
+}
+
+export interface ImportReportsResult {
+  daily: { created: number; skipped: number };
+  reviews: { created: number; skipped: number };
+}
+
+const stripFrontMatter = (t: string) =>
+  t
+    .replace(/\r\n?/g, '\n')
+    .replace(/^---\n[\s\S]*?\n---\n?/, '')
+    .trim();
+
+/**
+ * Turn the prototype's history into report versions (path 'import'): each imported daily log
+ * becomes that day's daily report, citing the log record; each review becomes its period's
+ * report, stale until it's regenerated with evidence. Periods that already have a version
+ * are left alone, so this is safe to repeat.
+ */
+export async function importPrototypeReports(
+  ctx: Ctx,
+  projectId: string,
+  reviews: ImportReview[] = [],
+): Promise<ImportReportsResult> {
+  const result: ImportReportsResult = {
+    daily: { created: 0, skipped: 0 },
+    reviews: { created: 0, skipped: 0 },
+  };
+  const audienceKey = `me:${ctx.actor.userId}`;
+  await asCaller(ctx, async (tx) => {
+    const project = await projectRepo.findProject(tx, projectId);
+    if (!project) throw notFound('Project not found');
+    if (!atLeast(project.role, 'contributor'))
+      throw forbidden('You need at least contributor rights in this project');
+    const weekStart = await weekStartOf(tx);
+
+    const ensure = async (kind: ReportKind, date: string) => {
+      const period = periodFor(kind, date, { weekStart });
+      const key = { projectId, kind, periodStart: period.start, audienceKey };
+      let r = await reportRepo.findReport(tx, key);
+      if (!r) {
+        const id = newId();
+        await reportRepo.insertReport(
+          tx,
+          {
+            id,
+            workspaceId: ctx.actor.workspaceId,
+            projectId,
+            kind,
+            periodStart: period.start,
+            periodEndExcl: period.endExcl,
+            audienceKey,
+          },
+          [ctx.actor.userId],
+        );
+        r = await reportRepo.getReport(tx, id);
+      }
+      return r as ReportRow;
+    };
+    const write = async (r: ReportRow, bodyMd: string, refRevisionId: string | null) => {
+      await reportRepo.insertVersion(
+        tx,
+        {
+          id: newId(),
+          reportId: r.id,
+          workspaceId: r.workspaceId,
+          versionNo: 1,
+          bodyMd,
+          path: 'import',
+          templateVersion: 'prototype',
+          client: 'worklog import',
+          actorUserId: ctx.actor.userId,
+          inputHash: 'import',
+          guidanceHash: 'import',
+          changeReason: 'initial',
+          changeSummary: 'Imported from the prototype worklog',
+          validation: { imported: true },
+        },
+        [],
+        refRevisionId
+          ? [{ anchor: 'import', refType: 'record_revision', refId: refRevisionId }]
+          : [],
+        [],
+      );
+    };
+
+    const seen = new Set<string>();
+    for (const log of (await reportRepo.importedLogs(tx, projectId, ctx.actor.userId)).rows) {
+      if (seen.has(log.date)) continue; // the file import wins over the Confluence copy
+      seen.add(log.date);
+      const r = await ensure('daily', log.date);
+      if (r.currentVersionId) {
+        result.daily.skipped++;
+        continue;
+      }
+      await write(r, stripFrontMatter(log.text ?? log.summary ?? log.title), log.revision_id);
+      result.daily.created++;
+    }
+    for (const rv of reviews) {
+      const r = await ensure(rv.kind, rv.start);
+      if (r.currentVersionId) {
+        result.reviews.skipped++;
+        continue;
+      }
+      await write(r, stripFrontMatter(rv.body), null);
+      await reportRepo.setReportStale(tx, r.id);
+      result.reviews.created++;
+    }
+  });
+  return result;
+}

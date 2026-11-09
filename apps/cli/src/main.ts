@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
+import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   builtinConnectors,
   type ConfluenceConfig,
+  parseReview,
   scanConfluenceWorklog,
   scanWorklog,
   type WorklogRecord,
@@ -50,6 +52,7 @@ Connectors:
   connector remove <id>              Disconnect and delete the stored token (records stay)
   sync [ID…] [--stream S]… [--from D] [--max-pages N]
                                      Sync all connected accounts, or the ones given
+  status                             Reports due (missing or stale), Inbox, connector health
   run [--days N] [--no-sync]         The morning run: sync every connector, then rebuild the
                                      bundles of the last N days (default 14) and stale days
   bundles [--project SLUG] [--date D]
@@ -65,6 +68,9 @@ Import:
                                      The prototype's daily logs (default DIR: ~/worklog).
                                      Safe to repeat: unchanged days are skipped, changed
                                      days get a new revision.
+  import reports [DIR] --project SLUG
+                                     The imported daily logs and the prototype's reviews as
+                                     report versions (run after import worklog). Safe to repeat.
   import confluence-worklog --from D --to D --project SLUG|inbox [--dry-run]
                                      The Confluence work log's month pages ("November,
                                      2026"). Same records as the file import: one per day.
@@ -397,6 +403,26 @@ const commands: Record<string, Handler> = {
     return 0;
   },
 
+  async status(h) {
+    const c = await ctx(h);
+    const slugs = await slugMap(c);
+    const st = await svc.getStatus(c);
+    if (!st.due.length)
+      console.log('Nothing due: every weekday with evidence has a current report.');
+    else console.log(`Due (${st.due.length}), oldest first:`);
+    for (const d of st.due) {
+      console.log(
+        `  ${d.kind.padEnd(8)} ${d.date}  #${slugs.get(d.projectId) ?? '?'}  ${d.reason}`,
+      );
+    }
+    console.log(`Inbox: ${st.inboxCount}`);
+    for (const x of st.connectors) {
+      const err = x.error ? `  error: ${x.error}` : '';
+      console.log(`  ${x.source}  [${x.status}]  last ok ${ago(x.lastSuccessAt)}${err}`);
+    }
+    return 0;
+  },
+
   async identities(h) {
     const list = await svc.listIdentities(await ctx(h));
     if (!list.length) console.log('No identities yet. Add one: hub identity add <source> <login>');
@@ -578,9 +604,23 @@ const commands: Record<string, Handler> = {
       },
     });
     const [what, dirArg] = positionals;
+    if (what === 'reports' && values.project) {
+      const c = await ctx(h);
+      const dir = dirArg ?? join(homedir(), 'worklog');
+      const reviews = scanWorklog(dir, (await svc.localOwner(h.db)).timeZone)
+        .reviews.map((f) => parseReview(readFileSync(join(dir, f), 'utf8'), f))
+        .filter((r): r is NonNullable<typeof r> => r != null);
+      const r = await svc.importPrototypeReports(c, await projectIdFor(c, values.project), reviews);
+      console.log(
+        `Daily reports: ${r.daily.created} imported, ${r.daily.skipped} already there. ` +
+          `Reviews: ${r.reviews.created} imported (stale until rewritten), ${r.reviews.skipped} already there.`,
+      );
+      return 0;
+    }
     if (!values.project || (what !== 'worklog' && what !== 'confluence-worklog')) {
       console.error(
         'Usage: hub import worklog [DIR] --project SLUG|inbox [--dry-run]\n' +
+          '       hub import reports [DIR] --project SLUG   (after the worklog import)\n' +
           '       hub import confluence-worklog --from D --to D --project SLUG|inbox [--dry-run]',
       );
       return 1;
@@ -603,7 +643,9 @@ const commands: Record<string, Handler> = {
       );
       for (const s of scan.skipped) console.log(`  skipped ${s.file}: ${s.reason}`);
       if (scan.reviews.length) {
-        console.log('  reviews become report versions once reports exist (M3); not imported now');
+        console.log(
+          '  then: hub import reports --project <slug> turns logs and reviews into reports',
+        );
       }
     } else {
       if (!values.from || !values.to) {

@@ -44,8 +44,10 @@ export {
 } from './sdk';
 export {
   dayLogInput,
+  type ParsedReview,
   parseDailyLog,
   parseFrontMatter,
+  parseReview,
   scanWorklog,
   type WorklogRecord,
   type WorklogScan,

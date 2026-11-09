@@ -395,3 +395,28 @@ export async function inboxCount(tx: Tx, userId: string): Promise<number> {
       and (project_id is null or routing_status = 'needs_review')`);
   return Number(r.rows[0]?.n ?? 0);
 }
+
+/** The caller's imported daily logs in a project (prototype migration, schema.md §11). */
+export async function importedLogs(tx: Tx, projectId: string, userId: string) {
+  return tx.execute<{
+    date: string;
+    source: string;
+    revision_id: string;
+    text: string | null;
+    summary: string | null;
+    title: string;
+  }>(sql`
+    select r.applicable_date::text as date, r.source, r.current_revision_id as revision_id,
+           rv.payload->>'text' as text, r.summary, r.title
+    from records r join record_revisions rv on rv.id = r.current_revision_id
+    where r.project_id = ${projectId} and r.owner_user_id = ${userId}
+      and r.kind = 'imported_log' and r.hidden_at is null
+    order by r.applicable_date, (r.source = 'worklog') desc`);
+}
+
+export async function setReportStale(tx: Tx, reportId: string): Promise<void> {
+  await tx
+    .update(reports)
+    .set({ status: 'stale', staleSince: new Date() })
+    .where(eq(reports.id, reportId));
+}

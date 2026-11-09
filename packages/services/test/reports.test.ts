@@ -298,3 +298,55 @@ describe('status', () => {
     expect(reports.map((r) => [r.kind, r.period.start])).toContainEqual(['weekly', '2026-11-02']);
   });
 });
+
+describe('prototype import', () => {
+  test('daily logs become daily reports citing the log; reviews become stale period reports', async () => {
+    const { importPrototypeReports } = await import('../src');
+    await ingestRecords(ctx('bob'), {
+      source: 'worklog',
+      tier: 'file_import',
+      projectId: s.p.P,
+      records: [
+        {
+          externalId: '2026-10-14',
+          kind: 'imported_log',
+          eventTime: '2026-10-14T04:00:00Z',
+          applicableDate: '2026-10-14',
+          title: 'Daily',
+          actor: 'worklog',
+          payload: { text: '---\ndate: 2026-10-14\n---\n## SDK\n- Fixed the build' },
+        },
+      ],
+    });
+    const reviews = [
+      { kind: 'weekly' as const, start: '2026-10-12', body: '## TL;DR\nA good week.' },
+    ];
+    const first = await importPrototypeReports(ctx('bob'), s.p.P, reviews);
+    expect(first).toEqual({
+      daily: { created: 1, skipped: 0 },
+      reviews: { created: 1, skipped: 0 },
+    });
+    const again = await importPrototypeReports(ctx('bob'), s.p.P, reviews);
+    expect(again).toEqual({
+      daily: { created: 0, skipped: 1 },
+      reviews: { created: 0, skipped: 1 },
+    });
+
+    const d = await getReport(ctx('bob'), { projectId: s.p.P, kind: 'daily', date: '2026-10-14' });
+    expect(d).toMatchObject({
+      path: 'import',
+      status: 'current',
+      bodyMd: '## SDK\n- Fixed the build',
+    });
+    expect(d.citations).toEqual([
+      expect.objectContaining({ anchor: 'import', type: 'record_revision', title: 'Daily' }),
+    ]);
+    const w = await getReport(ctx('bob'), { projectId: s.p.P, kind: 'weekly', date: '2026-10-14' });
+    expect(w).toMatchObject({ path: 'import', status: 'stale' });
+    // Imported dailies don't go stale when the day's bundle changes later.
+    await markStaleReports(h.db);
+    expect(
+      (await getReport(ctx('bob'), { projectId: s.p.P, kind: 'daily', date: '2026-10-14' })).status,
+    ).toBe('current');
+  });
+});

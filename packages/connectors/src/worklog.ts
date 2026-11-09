@@ -162,3 +162,21 @@ export function scanWorklog(root: string, timeZone: string): WorklogScan {
     .map(rel);
   return scan;
 }
+
+export interface ParsedReview {
+  kind: 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
+  start: string;
+  title: string;
+  body: string;
+  file: string;
+}
+
+const REVIEW_KINDS = ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'] as const;
+
+/** A prototype review (`reviews/<kind>/*.md`, front matter {kind, start, end, title}). */
+export function parseReview(text: string, file: string): ParsedReview | null {
+  const { meta, body } = parseFrontMatter(text.replace(/\r\n?/g, '\n'));
+  const kind = meta.kind as ParsedReview['kind'];
+  if (!REVIEW_KINDS.includes(kind) || !/^\d{4}-\d{2}-\d{2}$/.test(meta.start ?? '')) return null;
+  return { kind, start: meta.start as string, title: meta.title ?? '', body: body.trim(), file };
+}
