@@ -116,6 +116,9 @@
     "packages/reports": {
       "name": "@xjournal/reports",
       "version": "0.0.0",
+      "dependencies": {
+        "@xjournal/core": "workspace:*",
+      },
     },
     "packages/secrets": {
       "name": "@xjournal/secrets",
