@@ -3,13 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Service layer (api.md §3) with authorization",
+  "description": "Service layer (api.md \u00c2\u00a73) with authorization",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@xjournal/connectors": "workspace:*",
     "@xjournal/core": "workspace:*",
     "@xjournal/db": "workspace:*",
+    "@xjournal/secrets": "workspace:*",
     "zod": "4.6.7"
   }
 }

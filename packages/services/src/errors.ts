@@ -38,3 +38,12 @@ export function parse<S extends z.ZodType>(schema: S, input: unknown): z.infer<S
     r.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
   );
 }
+
+/** True for a Postgres unique violation (23505), however deeply the driver wrapped it. */
+export function isUniqueViolation(e: unknown): boolean {
+  for (let err: unknown = e; err; err = (err as { cause?: unknown }).cause) {
+    if ((err as { code?: string }).code === '23505') return true;
+    if (String((err as Error).message ?? '').includes('duplicate key')) return true;
+  }
+  return false;
+}

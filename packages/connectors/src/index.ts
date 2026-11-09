@@ -1,3 +1,4 @@
+export { builtinConnectors } from './builtin';
 export {
   type ConfluenceConfig,
   type ConfluenceWorklogScan,
@@ -10,6 +11,22 @@ export {
   scanConfluenceWorklog,
   storageToText,
 } from './confluence-worklog';
+export {
+  type AnyConnector,
+  type AuthType,
+  type Connector,
+  ConnectorAuthError,
+  type ConnectorDescription,
+  ConnectorRateLimitError,
+  ConnectorRegistry,
+  type Cursor,
+  defineConnector,
+  kindOfSource,
+  type StreamDescription,
+  type SyncInput,
+  type SyncLog,
+  type SyncPage,
+} from './sdk';
 export {
   dayLogInput,
   parseDailyLog,

@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
+  builtinConnectors,
   type ConfluenceConfig,
   scanConfluenceWorklog,
   scanWorklog,
@@ -10,6 +11,7 @@ import {
 } from '@xjournal/connectors';
 import type { RecordView } from '@xjournal/core';
 import { connectPostgres, type DbHandle, migrate, migrationStatus } from '@xjournal/db';
+import { osKeychain } from '@xjournal/secrets';
 import * as svc from '@xjournal/services';
 
 // `hub` CLI (plan.md §1). It runs the service layer in-process against DATABASE_URL, as the
@@ -33,6 +35,22 @@ Notes and records:
   route <id> [--project SLUG|inbox] [--date D] [--kind K] [--visibility V]
   show <id>                          A record and its revisions
   search <query…> [--project SLUG] [--from D] [--to D] [--limit N]
+
+Connectors:
+  connectors                         Connected accounts and each stream's sync status
+  connector kinds                    The connector kinds this hub knows
+  connector add <kind> [--name N] [--project SLUG]… [--config JSON] [--from D]
+                                     Connect an account. Asks for the token (hidden), or
+                                     reads it from stdin; it goes to the OS keychain.
+                                     --from: how far back the first sync reaches.
+  connector remove <id>              Disconnect and delete the stored token (records stay)
+  sync [ID…] [--stream S]… [--from D] [--max-pages N]
+                                     Sync all connected accounts, or the ones given
+  identities                         Your accounts in each source ("is this mine?")
+  identity add <source> <login> [--alias A]…
+                                     e.g. identity add github:github.com octocat
+                                          --alias "Octo Cat" --alias octo@example.com
+  identity remove <id>
 
 Import:
   import worklog [DIR] --project SLUG|inbox [--dry-run]
@@ -122,12 +140,224 @@ async function slugMap(c: svc.Ctx) {
   return new Map((await svc.listProjects(c)).map((p) => [p.id, p.slug]));
 }
 
+const connectorDeps = (): svc.ConnectorDeps => ({
+  registry: builtinConnectors(),
+  secrets: osKeychain(),
+  log: {
+    info: () => {},
+    warn: (msg, data) => console.error(`  ${msg}${data ? ` ${JSON.stringify(data)}` : ''}`),
+  },
+});
+
+/** Read a secret without echoing it: hidden from a terminal, or the whole of piped stdin. */
+async function readSecret(label: string): Promise<string> {
+  if (!process.stdin.isTTY) return readStdin();
+  process.stdout.write(`${label}: `);
+  const stdin = process.stdin;
+  stdin.setRawMode(true);
+  stdin.resume();
+  stdin.setEncoding('utf8');
+  return new Promise((resolve, reject) => {
+    let value = '';
+    const done = (fn: () => void) => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.off('data', onData);
+      process.stdout.write('\n');
+      fn();
+    };
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return done(() => resolve(value.trim()));
+        if (ch === '\u0003') return done(() => reject(new Error('Cancelled')));
+        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
+        else value += ch;
+      }
+    };
+    stdin.on('data', onData);
+  });
+}
+
+const ago = (iso: string | null) => (iso ? iso.replace('T', ' ').slice(0, 16) : 'never');
+
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return '';
   return (await new Response(Bun.stdin.stream()).text()).trim();
 }
 
 const commands: Record<string, Handler> = {
+  async connectors(h) {
+    const c = await ctx(h);
+    const slugs = await slugMap(c);
+    const list = await svc.listConnectors(c);
+    if (!list.length) {
+      console.log('No connectors yet. Add one: hub connector add <kind>');
+      return 0;
+    }
+    for (const a of list) {
+      const where = a.projectIds.length
+        ? a.projectIds.map((p) => `#${slugs.get(p) ?? '?'}`).join(' ')
+        : 'inbox';
+      console.log(`${a.displayName}  ${a.source}  → ${where}  [${a.status}]  ${a.id}`);
+      for (const st of a.streams) {
+        const floor = st.historyFloor ? `  history from ${st.historyFloor.slice(0, 10)}` : '';
+        const err = st.lastError ? `  error: ${st.lastError}` : '';
+        console.log(`  ${st.stream.padEnd(20)} last ok ${ago(st.lastSuccessAt)}${floor}${err}`);
+      }
+    }
+    return 0;
+  },
+
+  async connector(h, args) {
+    const [sub, ...rest] = args;
+    const deps = connectorDeps();
+    if (sub === 'kinds') {
+      const kinds = deps.registry.list();
+      if (!kinds.length) console.log('No connectors are built in yet.');
+      for (const d of kinds) {
+        const streams = d.streams.map((x) => x.key).join(', ');
+        console.log(`${d.kind.padEnd(12)} ${d.displayName}  streams: ${streams}`);
+      }
+      return 0;
+    }
+    if (sub === 'add') {
+      const { values, positionals } = parseArgs({
+        args: rest,
+        allowPositionals: true,
+        options: {
+          name: { type: 'string' },
+          project: { type: 'string', multiple: true },
+          config: { type: 'string' },
+          from: { type: 'string' },
+        },
+      });
+      const kind = positionals[0];
+      const desc = kind ? deps.registry.get(kind)?.describe() : undefined;
+      if (!kind || !desc) {
+        const known =
+          deps.registry
+            .list()
+            .map((d) => d.kind)
+            .join(', ') || 'none yet';
+        console.error(
+          `Usage: hub connector add <kind> [--name N] [--project SLUG]… (kinds: ${known})`,
+        );
+        return 1;
+      }
+      const c = await ctx(h);
+      const projectIds = await Promise.all((values.project ?? []).map((p) => projectIdFor(c, p)));
+      let config: unknown = {};
+      if (values.config) {
+        try {
+          config = JSON.parse(values.config);
+        } catch {
+          console.error('--config must be JSON');
+          return 1;
+        }
+      }
+      const secret = desc.authTypes.includes('none') ? '' : await readSecret('Token');
+      const a = await svc.addConnector(c, deps, {
+        kind,
+        config,
+        projectIds,
+        ...(values.name ? { displayName: values.name } : {}),
+        ...(values.from ? { backfillFrom: values.from } : {}),
+        ...(secret ? { secret } : {}),
+      });
+      console.log(`Connected ${a.displayName} (${a.source})  ${a.id}`);
+      console.log(`So its activity counts as yours: hub identity add ${a.source} <login>`);
+      return 0;
+    }
+    if (sub === 'remove' && rest[0]) {
+      await svc.removeConnector(await ctx(h), deps, rest[0]);
+      console.log('Disconnected; the token was deleted from the keychain.');
+      return 0;
+    }
+    console.error('Usage: hub connector kinds | add <kind> … | remove <id>');
+    return 1;
+  },
+
+  async sync(h, args) {
+    const { values, positionals } = parseArgs({
+      args,
+      allowPositionals: true,
+      options: {
+        stream: { type: 'string', multiple: true },
+        from: { type: 'string' },
+        'max-pages': { type: 'string' },
+      },
+    });
+    const c = await ctx(h);
+    const deps = connectorDeps();
+    const ids = positionals.length ? positionals : (await svc.listConnectors(c)).map((a) => a.id);
+    if (!ids.length) {
+      console.log('No connectors to sync. Add one: hub connector add <kind>');
+      return 0;
+    }
+    let failed = false;
+    for (const id of ids) {
+      const r = await svc.syncConnector(c, deps, id, {
+        ...(values.stream ? { streams: values.stream } : {}),
+        ...(values.from ? { backfillFrom: values.from } : {}),
+        ...(values['max-pages'] ? { maxPages: Number(values['max-pages']) } : {}),
+      });
+      console.log(`${r.source}  [${r.status}]`);
+      for (const w of r.warnings) console.log(`  ! ${w}`);
+      for (const st of r.streams) {
+        const counts = `${st.created} new, ${st.updated} updated, ${st.unchanged} unchanged`;
+        const rej = st.rejected.length ? `, ${st.rejected.length} rejected` : '';
+        const more = st.more ? ' (more to come: run sync again)' : '';
+        const what = st.error ? `error: ${st.error}` : `${counts}${rej}${more}`;
+        console.log(`  ${st.stream.padEnd(20)} ${what}`);
+        for (const x of st.rejected.slice(0, 5)) {
+          console.log(`    rejected ${x.externalId}: ${x.message}`);
+        }
+      }
+      if (r.status === 'error') failed = true;
+    }
+    return failed ? 1 : 0;
+  },
+
+  async identities(h) {
+    const list = await svc.listIdentities(await ctx(h));
+    if (!list.length) console.log('No identities yet. Add one: hub identity add <source> <login>');
+    for (const i of list) {
+      const aliases = i.aliases.length ? `  (${i.aliases.join(', ')})` : '';
+      console.log(`${i.source.padEnd(28)} ${i.accountKey}${aliases}  [${i.id}]`);
+    }
+    return 0;
+  },
+
+  async identity(h, args) {
+    const [sub, ...rest] = args;
+    if (sub === 'add') {
+      const { values, positionals } = parseArgs({
+        args: rest,
+        allowPositionals: true,
+        options: { alias: { type: 'string', multiple: true } },
+      });
+      const [source, accountKey] = positionals;
+      if (!source || !accountKey) {
+        console.error('Usage: hub identity add <source> <login> [--alias A]…');
+        return 1;
+      }
+      const i = await svc.addIdentity(await ctx(h), {
+        source,
+        accountKey,
+        aliases: values.alias ?? [],
+      });
+      console.log(`Mapped ${i.source} ${i.accountKey}  [${i.id}]`);
+      return 0;
+    }
+    if (sub === 'remove' && rest[0]) {
+      await svc.removeIdentity(await ctx(h), rest[0]);
+      console.log('Removed.');
+      return 0;
+    }
+    console.error('Usage: hub identity add <source> <login> [--alias A]… | remove <id>');
+    return 1;
+  },
+
   async migrate(h, args) {
     if (!args.includes('--status')) await migrate(h);
     const s = await migrationStatus(h);

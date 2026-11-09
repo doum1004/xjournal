@@ -11,6 +11,7 @@
     "@xjournal/connectors": "workspace:*",
     "@xjournal/core": "workspace:*",
     "@xjournal/db": "workspace:*",
+    "@xjournal/secrets": "workspace:*",
     "@xjournal/services": "workspace:*"
   },
   "bin": {

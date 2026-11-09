@@ -23,7 +23,9 @@ export interface NewRecord {
   externalId: string;
   kind: RecordKind;
   tier: InputTier;
+  connectorAccountId?: string;
   ownerUserId: string;
+  actorIdentityId?: string;
   isMine: boolean;
   eventTime: Date;
   capturedAt: Date;

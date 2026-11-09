@@ -38,6 +38,20 @@ Inline hints in a note: `#project`, `@today` / `@yesterday` / `@YYYY-MM-DD`, `!e
 
 The same operations are on the REST API under `/api/v1` (`docs/api.md` §3.3), with `Authorization: Bearer $HUB_LOCAL_TOKEN`.
 
+## Connectors
+
+Connector tokens go to the OS credential store (Windows Credential Manager, macOS Keychain, libsecret), never to `.env` or the database. `connector add` asks for the token without echoing it.
+
+```sh
+bun run hub connector kinds                        # what this hub can connect to
+bun run hub connector add <kind> --project work --from 2026-01-01
+bun run hub identity add github:github.com octocat --alias "Octo Cat"   # what counts as yours
+bun run hub sync                                   # every connected account, from its cursor
+bun run hub connectors                             # status, last sync and errors per stream
+```
+
+A sync writes each page of records together with its cursor, so an interrupted sync resumes where it stopped. Records go to the connector's project when it feeds exactly one, otherwise to the Inbox.
+
 ## Development
 
 | Command | Does |
