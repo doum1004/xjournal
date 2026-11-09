@@ -9,6 +9,17 @@ export {
   rebuildDay,
 } from './bundles';
 export {
+  careerSection,
+  createCareerEntry,
+  deleteCareerEntry,
+  exportCareer,
+  importCareer,
+  listCareer,
+  parseExperience,
+  publicSafeWarnings,
+  updateCareerEntry,
+} from './career';
+export {
   addConnector,
   addIdentity,
   type ConnectorDeps,
@@ -70,6 +81,7 @@ export {
   listReports,
   listReportVersions,
   markStaleReports,
+  periodOptions,
   resolveReport,
   saveReportVersion,
 } from './reports';

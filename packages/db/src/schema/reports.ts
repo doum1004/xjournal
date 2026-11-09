@@ -111,7 +111,8 @@ export const reportInputs = pgTable(
     primaryKey({ columns: [t.reportVersionId, t.inputType, t.inputId] }),
     check(
       'report_inputs_type_check',
-      sql`${t.inputType} in ('bundle', 'report_version', 'guidance_version')`,
+      // 'previous_report': the same kind's previous period (a bi-weekly's plan vs. actual).
+      sql`${t.inputType} in ('bundle', 'report_version', 'previous_report', 'guidance_version')`,
     ),
     index('report_inputs_input_idx').on(t.inputType, t.inputId),
   ],
@@ -201,4 +202,38 @@ export const exportsTable = pgTable(
     createdAt: tz('created_at').notNull().defaultNow(),
   },
   (t) => [index('exports_destination_target_idx').on(t.createdBy, t.destination, t.target)],
+);
+
+/**
+ * The career log (spec §9.8): public-safe accomplishment bullets per quarter, proposed by the
+ * quarterly report, edited and approved by the user, and exported only by the user. Private
+ * to its owner.
+ */
+export const careerEntries = pgTable(
+  'career_entries',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** The quarter's first day. */
+    periodStart: date('period_start').notNull(),
+    bodyMd: text('body_md').notNull(),
+    /** The quarterly report version that proposed the latest draft. */
+    sourceVersionId: text('source_version_id').references(() => reportVersions.id),
+    status: text('status').notNull().default('draft'),
+    approvedAt: tz('approved_at'),
+    createdAt: tz('created_at').notNull().defaultNow(),
+    updatedAt: tz('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    unique('career_entries_owner_period_key').on(t.userId, t.projectId, t.periodStart),
+    check('career_entries_status_check', sql`${t.status} in ('draft', 'approved')`),
+  ],
 );

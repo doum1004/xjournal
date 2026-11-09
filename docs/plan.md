@@ -125,6 +125,7 @@ Goal: prove the risky parts before building on them.
 | M2 | Built (ADR 0006). GitHub verified against the prototype's digests on real accounts; Jira and Confluence tested against recorded API shapes, waiting for a real connection |
 | M3 | Built (ADR 0007). The prototype's history imported as reports; a cited daily report written from real inputs over the API. Waiting on: a real morning run from Claude Code, and the Confluence mirror on the real work log |
 | M4 | Built. Direct generation tested with a scripted model; waiting for a Claude API key to run for real |
+| M5 | In progress. Done: bi-weekly (from weekly reports, with plan vs. actual), quarterly and yearly reports; the career log (proposed by quarterly reports, approved and exported in the UI, `hub import career`). Next: the Slack, Google Calendar and Zoom connectors |
 
 ## 3. Risks and how they're handled
 

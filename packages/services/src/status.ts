@@ -1,6 +1,12 @@
-import { addDays, type DueReport, localDate, type StatusView } from '@xjournal/core';
+import {
+  addDays,
+  type DueReport,
+  localDate,
+  type ReportKind,
+  type StatusView,
+} from '@xjournal/core';
 import { projectRepo, recordRepo, reportRepo } from '@xjournal/db';
-import { periodFor } from '@xjournal/reports';
+import { inputKindOf, periodFor, previousPeriod } from '@xjournal/reports';
 import { listConnectors } from './connectors';
 import { asCaller, type Ctx } from './context';
 import { notFound } from './errors';
@@ -8,7 +14,7 @@ import { atLeast } from './projects';
 
 // `GET /status` / `get_status` (api.md §3.4): what needs writing, oldest first (spec §5.1).
 // A morning run walks `due`: every weekday of the catch-up window that has evidence but no
-// current daily report, stale reports, and the previous week's and month's reviews.
+// current daily report, stale reports, and the previous period's review of each kind.
 
 export interface StatusOptions {
   projectId?: string;
@@ -87,27 +93,27 @@ export async function getStatus(ctx: Ctx, opts: StatusOptions = {}): Promise<Sta
         }
       }
 
-      // The last complete week and month, once they have daily reports.
-      const have = new Set(
-        recent
-          .filter((r) => r.report.currentVersionId)
-          .map((r) => `${r.report.kind}:${r.report.periodStart}`),
-      );
-      const weekStart = ws?.weekStart ?? 1;
-      const lastWeek = periodFor('weekly', addDays(today, -7), { weekStart });
-      const lastMonth = periodFor('monthly', addDays(periodFor('monthly', today).start, -1));
-      for (const [kind, period] of [
-        ['weekly', lastWeek],
-        ['monthly', lastMonth],
-      ] as const) {
-        if (have.has(`${kind}:${period.start}`)) continue;
-        const dailies = await reportRepo.dailyReportDates(tx, {
+      // The last complete week, two weeks, month, quarter and year, once they have the
+      // reports they're built from (spec §5).
+      const opts = { weekStart: ws?.weekStart ?? 1, biweeklyAnchor: ws?.biweeklyAnchor };
+      const last = (kind: ReportKind) => previousPeriod(kind, periodFor(kind, today, opts), opts);
+      for (const kind of ['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'] as const) {
+        const period = last(kind);
+        const existing = await reportRepo.findReport(tx, {
           projectId: p.id,
+          kind,
+          periodStart: period.start,
           audienceKey: meKey,
+        });
+        if (existing?.currentVersionId) continue;
+        const inputs = await reportRepo.reportsInRange(tx, {
+          projectId: p.id,
+          kind: inputKindOf(kind) as ReportKind,
           from: period.start,
           toExcl: period.endExcl,
+          audienceKey: meKey,
         });
-        if (dailies.length)
+        if (inputs.some((r) => r.report.currentVersionId))
           due.push({ kind, date: period.start, projectId: p.id, reason: 'missing' });
       }
     }

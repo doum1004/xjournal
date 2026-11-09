@@ -29,7 +29,9 @@ import {
 import {
   inputKindOf,
   type KnownRefs,
+  type PeriodOptions,
   periodFor,
+  previousPeriod,
   REF_FORMAT,
   statementsOf,
   stripCitations,
@@ -38,6 +40,7 @@ import {
 } from '@xjournal/reports';
 import { z } from 'zod';
 import { buildBundle } from './bundles';
+import { proposeCareerEntry } from './career';
 import { asCaller, type Ctx } from './context';
 import { conflict, forbidden, isUniqueViolation, notFound, parse, ServiceError } from './errors';
 import { atLeast, workspaceTimeZone } from './projects';
@@ -89,12 +92,14 @@ function toRef(r: ReportRow, title: string): ReportRef {
   };
 }
 
-async function weekStartOf(tx: Tx): Promise<number> {
-  return (await projectRepo.getWorkspaceSettings(tx))?.weekStart ?? 1;
+/** The workspace's week start and bi-weekly anchor (spec §5.7). */
+export async function periodOptions(tx: Tx): Promise<PeriodOptions> {
+  const ws = await projectRepo.getWorkspaceSettings(tx);
+  return { weekStart: ws?.weekStart ?? 1, biweeklyAnchor: ws?.biweeklyAnchor ?? '2024-01-01' };
 }
 
 const titleOf = async (tx: Tx, r: ReportRow) =>
-  periodFor(r.kind, r.periodStart, { weekStart: await weekStartOf(tx) }).title;
+  periodFor(r.kind, r.periodStart, await periodOptions(tx)).title;
 
 /** `POST /projects/{p}/reports/resolve`: find or create the logical report. */
 export async function resolveReport(ctx: Ctx, input: unknown): Promise<ReportRef> {
@@ -102,8 +107,7 @@ export async function resolveReport(ctx: Ctx, input: unknown): Promise<ReportRef
   return asCaller(ctx, async (tx) => {
     const project = await projectRepo.findProject(tx, req.projectId);
     if (!project) throw notFound('Project not found');
-    const weekStart = await weekStartOf(tx);
-    const period = periodFor(req.kind, req.date, { weekStart });
+    const period = periodFor(req.kind, req.date, await periodOptions(tx));
     const audienceKey = audienceKeyOf(req.audience, ctx.actor.userId);
     const key = { projectId: project.id, kind: req.kind, periodStart: period.start, audienceKey };
     const existing = await reportRepo.findReport(tx, key);
@@ -171,8 +175,8 @@ async function buildInputs(tx: Tx, ctx: Ctx, report: ReportRow, now: Date): Prom
   if (!report.projectId)
     throw new ServiceError(400, 'bad_request', 'Workspace reports arrive later');
   const projectId = report.projectId;
-  const weekStart = await weekStartOf(tx);
-  const period = periodFor(report.kind, report.periodStart, { weekStart });
+  const opts = await periodOptions(tx);
+  const period = periodFor(report.kind, report.periodStart, opts);
   const audience = await reportRepo.audienceOf(tx, report.id);
   const onlyMe = audience.length === 1 && audience[0]?.id === ctx.actor.userId;
   // What every reader may see (spec §9.4): for a personal report, all the caller sees; for a
@@ -270,12 +274,47 @@ async function buildInputs(tx: Tx, ctx: Ctx, report: ReportRow, now: Date): Prom
     inputs.gaps.staleInputs = dailies
       .filter((d) => d.report.status === 'stale')
       .map((d) => d.report.id);
+    const have = new Set(dailies.map((d) => d.report.periodStart));
+    const today = localDate(now, await workspaceTimeZone(tx));
     if (fromKind === 'daily') {
-      const have = new Set(dailies.map((d) => d.report.periodStart));
-      const today = localDate(now, await workspaceTimeZone(tx));
       for (let d = report.periodStart; d < report.periodEndExcl && d < today; d = addDays(d, 1)) {
         const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
         if (dow !== 0 && dow !== 6 && !have.has(d)) inputs.gaps.missingDays.push(d);
+      }
+    } else {
+      // Weeks or months of the period that are over and have no report.
+      const missing: NonNullable<ReportInputs['gaps']['missingInputs']> = [];
+      for (let d = report.periodStart; d < report.periodEndExcl; ) {
+        const p = periodFor(fromKind, d, opts);
+        if (p.endExcl > today) break;
+        if (!have.has(p.start)) missing.push({ kind: fromKind, start: p.start, title: p.title });
+        d = p.endExcl;
+      }
+      inputs.gaps.missingInputs = missing;
+    }
+
+    if (report.kind === 'biweekly') {
+      // Plan vs. actual: the previous bi-weekly's "Next" items (spec §5.3).
+      const prevPeriod = previousPeriod('biweekly', period, opts);
+      const prev = await reportRepo.findReport(tx, {
+        projectId,
+        kind: 'biweekly',
+        periodStart: prevPeriod.start,
+        audienceKey: report.audienceKey,
+      });
+      const pv = prev?.currentVersionId
+        ? await reportRepo.getVersion(tx, prev.currentVersionId)
+        : null;
+      if (pv) {
+        const statements = statementsOf(pv.bodyMd);
+        known.versions.set(pv.id, new Set(statements.map((x) => x.anchor)));
+        inputRows.push({ inputType: 'previous_report', inputId: pv.id, inputHash: pv.id });
+        inputs.previousPeriod = {
+          versionId: pv.id,
+          period: prevPeriod,
+          bodyMd: pv.bodyMd,
+          statements: statements.map((x) => ({ anchor: x.anchor, text: stripCitations(x.text) })),
+        };
       }
     }
   }
@@ -474,7 +513,10 @@ export async function saveReportVersion(
   return asCaller(ctx, async (tx) => {
     const v = await reportRepo.getVersion(tx, versionId);
     if (!v) throw new ServiceError(500, 'internal', 'Version not readable after save');
-    return versionView(tx, await mustGetReport(tx, reportId), v);
+    const r = await mustGetReport(tx, reportId);
+    // A quarterly report proposes the quarter's career log entry (spec §9.8).
+    await proposeCareerEntry(tx, ctx, r, v);
+    return versionView(tx, r, v);
   });
 }
 
@@ -552,7 +594,7 @@ export async function getReport(ctx: Ctx, input: unknown): Promise<ReportVersion
     if (!q.projectId || !q.kind || !q.date) {
       throw new ServiceError(400, 'bad_request', 'Give versionId, or projectId, kind and date');
     }
-    const period = periodFor(q.kind, q.date, { weekStart: await weekStartOf(tx) });
+    const period = periodFor(q.kind, q.date, await periodOptions(tx));
     const r = await reportRepo.findReport(tx, {
       projectId: q.projectId,
       kind: q.kind,
@@ -599,7 +641,7 @@ export const zListReports = z.object({
 export async function listReports(ctx: Ctx, projectId: string, query: unknown) {
   const q = parse(zListReports, query);
   return asCaller(ctx, async (tx) => {
-    const weekStart = await weekStartOf(tx);
+    const opts = await periodOptions(tx);
     const rows = await reportRepo.reportsInRange(tx, {
       projectId,
       ...(q.kind ? { kind: q.kind } : {}),
@@ -607,7 +649,7 @@ export async function listReports(ctx: Ctx, projectId: string, query: unknown) {
       toExcl: q.to,
     });
     return rows.map((x) => ({
-      ...toRef(x.report, periodFor(x.report.kind, x.report.periodStart, { weekStart }).title),
+      ...toRef(x.report, periodFor(x.report.kind, x.report.periodStart, opts).title),
       versionNo: x.versionNo,
       path: x.path,
       updatedAt: x.versionCreatedAt?.toISOString() ?? null,
@@ -759,10 +801,10 @@ export async function importPrototypeReports(
     if (!project) throw notFound('Project not found');
     if (!atLeast(project.role, 'contributor'))
       throw forbidden('You need at least contributor rights in this project');
-    const weekStart = await weekStartOf(tx);
+    const opts = await periodOptions(tx);
 
     const ensure = async (kind: ReportKind, date: string) => {
-      const period = periodFor(kind, date, { weekStart });
+      const period = periodFor(kind, date, opts);
       const key = { projectId, kind, periodStart: period.start, audienceKey };
       let r = await reportRepo.findReport(tx, key);
       if (!r) {

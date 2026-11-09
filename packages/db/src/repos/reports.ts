@@ -296,8 +296,9 @@ export async function contextNotes(tx: Tx, projectId: string) {
 /**
  * Mark reports stale whose recorded inputs no longer match: a bundle's hash changed, an input
  * report has a newer current version, a guidance item has a newer version, or (for period
- * reports) the set of current daily reports in the period changed. Repeats until nothing
- * changes, so staleness climbs daily → weekly/monthly → quarterly/yearly. Returns the count.
+ * reports) the set of current input reports in the period changed. Repeats until nothing
+ * changes, so staleness climbs daily → weekly → bi-weekly and daily → monthly →
+ * quarterly/yearly. Returns the count.
  */
 export async function markStale(tx: Tx): Promise<number> {
   let total = 0;
@@ -311,7 +312,8 @@ export async function markStale(tx: Tx): Promise<number> {
         or exists (select 1 from report_inputs i
                    join report_versions v on v.id = i.input_id
                    join reports src on src.id = v.report_id
-                   where i.report_version_id = rp.current_version_id and i.input_type = 'report_version'
+                   where i.report_version_id = rp.current_version_id
+                     and i.input_type in ('report_version', 'previous_report')
                      and (src.current_version_id is distinct from v.id or src.status = 'stale'))
         or exists (select 1 from report_inputs i
                    join guidance_versions gv on gv.id = i.input_id
@@ -323,7 +325,9 @@ export async function markStale(tx: Tx): Promise<number> {
                         and i.input_type <> 'guidance_version')
             and (select count(*) from reports d
                  where d.project_id = rp.project_id and d.audience_key = rp.audience_key
-                   and d.kind = (case when rp.kind in ('quarterly', 'yearly') then 'monthly' else 'daily' end)::report_kind
+                   and d.kind = (case when rp.kind in ('quarterly', 'yearly') then 'monthly'
+                                      when rp.kind = 'biweekly' then 'weekly'
+                                      else 'daily' end)::report_kind
                    and d.period_start >= rp.period_start and d.period_start < rp.period_end_excl
                    and d.current_version_id is not null)
               <> (select count(*) from report_inputs i where i.report_version_id = rp.current_version_id

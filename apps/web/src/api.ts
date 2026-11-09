@@ -1,4 +1,5 @@
 import type {
+  CareerEntryView,
   ConnectorKindView,
   ConnectorView,
   DaySummary,
@@ -218,6 +219,20 @@ export const api = {
       /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'report.md';
     return { name, text: await res.text() };
   },
+  career: () => request<{ items: CareerEntryView[] }>('GET', '/career'),
+  addCareer: (body: { projectId: string; date: string; bodyMd: string }) =>
+    request<CareerEntryView>('POST', '/career', body),
+  updateCareer: (id: string, body: { bodyMd?: string; status?: 'draft' | 'approved' }) =>
+    request<CareerEntryView>('PATCH', `/career/${id}`, body),
+  deleteCareer: (id: string) => request<void>('DELETE', `/career/${id}`),
+  exportCareer: async (drafts = false) => {
+    const token = tokenStore.get();
+    const res = await fetch(`/api/v1/career/export${drafts ? '?drafts=true' : ''}`, {
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new ApiError(res.status, 'internal', 'Export failed');
+    return { name: 'career-log.md', text: await res.text() };
+  },
   stats: (projectId: string, from: string, to: string) =>
     request<{ items: { metric: string; value: number; description: string }[] }>(
       'GET',
@@ -249,8 +264,12 @@ export const api = {
 
   // Settings (api.md §3.2a)
   workspace: () => request<WorkspaceView>('GET', '/workspace'),
-  updateWorkspace: (body: { name?: string; timeZone?: string; weekStart?: number }) =>
-    request<WorkspaceView>('PATCH', '/workspace', body),
+  updateWorkspace: (body: {
+    name?: string;
+    timeZone?: string;
+    weekStart?: number;
+    biweeklyAnchor?: string;
+  }) => request<WorkspaceView>('PATCH', '/workspace', body),
   createProject: (body: { slug: string; name: string; timeZone?: string }) =>
     request<ProjectView>('POST', '/projects', body),
   updateProject: (id: string, body: ProjectPatch) =>

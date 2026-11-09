@@ -115,6 +115,7 @@ export async function getWorkspaceSettings(tx: Tx) {
       domain: workspaces.domain,
       timeZone: workspaces.timeZone,
       weekStart: workspaces.weekStart,
+      biweeklyAnchor: workspaces.biweeklyAnchor,
       ownerUserId: workspaces.ownerUserId,
     })
     .from(workspaces)
@@ -126,7 +127,7 @@ export async function getWorkspaceSettings(tx: Tx) {
 export async function updateWorkspace(
   tx: Tx,
   id: string,
-  patch: { name?: string; timeZone?: string; weekStart?: number },
+  patch: { name?: string; timeZone?: string; weekStart?: number; biweeklyAnchor?: string },
 ): Promise<boolean> {
   const rows = await tx
     .update(workspaces)

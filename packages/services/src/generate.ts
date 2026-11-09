@@ -83,6 +83,14 @@ function renderInputs(i: ReportInputs, instructions?: string): string {
     );
     for (const s of r.statements) out.push(`- #${s.anchor}: ${s.text}`);
   }
+  if (i.previousPeriod) {
+    const pp = i.previousPeriod;
+    out.push(
+      '',
+      `## The previous ${i.report.kind} report, ${pp.period.title}: its plan, for plan vs. actual (cite as [[v:${pp.versionId}#<anchor>]])`,
+    );
+    for (const s of pp.statements) out.push(`- #${s.anchor}: ${s.text}`);
+  }
   if (i.context?.length) {
     out.push('', '## Standing context (background; cite only if you state it)');
     for (const r of i.context) out.push(`- [[r:${r.revisionId}]] ${r.title}`);
@@ -91,6 +99,11 @@ function renderInputs(i: ReportInputs, instructions?: string): string {
   for (const s of i.stats) out.push(`- [[s:${s.metric}]] = ${s.value} (${s.description})`);
   if (i.gaps.missingDays.length)
     out.push('', `Days without a daily report: ${i.gaps.missingDays.join(', ')}`);
+  if (i.gaps.missingInputs?.length)
+    out.push(
+      '',
+      `Periods without an input report: ${i.gaps.missingInputs.map((m) => `${m.kind} ${m.title}`).join(', ')}`,
+    );
   if (i.previous) {
     out.push(
       '',

@@ -1048,8 +1048,15 @@ function WorkspaceForm({ ws }: { ws: NonNullable<Awaited<ReturnType<typeof api.w
   const [name, setName] = useState(ws.name);
   const [tz, setTz] = useState(ws.timeZone);
   const [weekStart, setWeekStart] = useState(ws.weekStart);
+  const [anchor, setAnchor] = useState(ws.biweeklyAnchor);
   const save = useMutation({
-    mutationFn: () => api.updateWorkspace({ name: name.trim(), timeZone: tz.trim(), weekStart }),
+    mutationFn: () =>
+      api.updateWorkspace({
+        name: name.trim(),
+        timeZone: tz.trim(),
+        weekStart,
+        biweeklyAnchor: anchor,
+      }),
     onSuccess: () => invalidate('workspace', 'me'),
   });
   return (
@@ -1064,7 +1071,7 @@ function WorkspaceForm({ ws }: { ws: NonNullable<Awaited<ReturnType<typeof api.w
         <h2 className="font-semibold">
           Workspace <Badge>{ws.domain}</Badge>
         </h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Name">
             <input
               disabled={!ws.isOwner}
@@ -1092,6 +1099,16 @@ function WorkspaceForm({ ws }: { ws: NonNullable<Awaited<ReturnType<typeof api.w
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label="Bi-weekly anchor" hint="Any day in the first week of a two-week pair.">
+            <input
+              type="date"
+              required
+              disabled={!ws.isOwner}
+              value={anchor}
+              onChange={(e) => setAnchor(e.target.value)}
+              className={`w-full ${inputClass}`}
+            />
           </Field>
         </div>
         <p className="text-xs text-muted">

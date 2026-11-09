@@ -123,7 +123,7 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 
 | Operation | REST | Min. role | MCP |
 |---|---|---|---|
-| Workspace settings | `GET /workspace` → `{id, name, domain, timeZone, weekStart, isOwner}`, `PATCH /workspace` `{name?, timeZone?, weekStart?}` | member / workspace owner | |
+| Workspace settings | `GET /workspace` → `{id, name, domain, timeZone, weekStart, biweeklyAnchor, isOwner}`, `PATCH /workspace` `{name?, timeZone?, weekStart?, biweeklyAnchor?}` | member / workspace owner | |
 | Project settings | `PATCH /projects/{p}` `{name?, timeZone? (null: the workspace's), defaultNoteVisibility?}` | manager | |
 | Archive a project | `POST /projects/{p}/archive` → 204 | owner | |
 
@@ -152,7 +152,7 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Days in a range | `GET /projects/{p}/days?from=&to=` → `[{date, recordCount, mineCount, bundleHash, dirty, daily: {reportId, status, versionId} \| null, coverage}]` | viewer | |
 | One day | `GET /projects/{p}/days/{date}` → `{bundle, workItems: [{id, title, records: RecordView[]}], unlinked: RecordView[], daily: ReportVersionView \| null, coverage}` | viewer (records filtered by visibility) | `get_day` |
 | Rebuild a day's bundle | `POST /projects/{p}/days/{date}/rebuild` → `{date, hash, changed, items}` | contributor | |
-| Status | `GET /status?projectId=` → `{projects, due: [{kind, date, projectId, reason: 'missing' \| 'stale'}], missingDays, staleReports, inboxCount, connectors}` (`due`: what a morning run writes, oldest first) | viewer | `get_status` |
+| Status | `GET /status?projectId=` → `{projects, due: [{kind, date, projectId, reason: 'missing' \| 'stale'}], missingDays, staleReports, inboxCount, connectors}` (`due`: what a morning run writes, oldest first: missing weekday dailies, stale reports, and the last finished week, two weeks, month, quarter and year once their input reports exist) | viewer | `get_status` |
 | Stats | `GET /stats?projectId=&from=&to=&metrics=` → `{metrics: [{metric, value, query}]}` (deterministic, spec §5.8) | viewer | `get_stats` |
 
 ### 3.5 Reports
@@ -170,6 +170,7 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Generate (direct path) | `POST /reports/{r}/generate` `{instructions?}` → 202 `{queued, alreadyRunning}` (one job per report), or the saved version without a queue; **409** with `reason: 'direct_generation_disabled'` when there's no model key | contributor, in audience | |
 | Model key | `GET /ai` → `{hasKey, model}`; `PUT /ai/key` `{key}` → 204 (write-only, OS keychain); `DELETE /ai/key` | owner user | |
 | Export | `GET /report-versions/{v}/export` → `text/markdown`: front matter (kind, project, range, version, path, generator, template, input and guidance hashes, inputs) and citations as footnotes | in audience | |
+| Career log (spec §9.8) | `GET /career?projectId=` → `{items: CareerEntryView[]}` (`{id, projectId, periodStart, title, bodyMd, status: 'draft' \| 'approved', sourceVersionId, approvedAt, updatedAt, warnings: [{line, text, reason}]}`); `POST /career` `{projectId, date, bodyMd}` (a draft; 409 if the quarter has one); `PATCH /career/{id}` `{bodyMd?, status?}` (editing without `status` returns it to draft); `DELETE /career/{id}`; `GET /career/export?projectId=&drafts=` → `text/markdown`, approved quarters newest first. Saving a quarterly version with a `## Career log` section creates or replaces the quarter's draft; an approved entry is never overwritten | the owner only | |
 | Write every due report | `POST /projects/{p}/reports/refresh` → 202 `{queued, due}` (the `get_status` due list), or `{written, failed}` without a queue | contributor | |
 
 ### 3.6 Guidance, comments, reminders
@@ -239,12 +240,17 @@ interface ReportInputs {
   bundles?: { date: IsoDate; hash: string; coverage: Coverage;
               workItems: { id: Id; title: string; records: RecordView[] }[];
               unlinked: RecordView[] }[];
-  // weekly and up: the constituent reports (spec §5)
+  // weekly and up: the constituent reports (spec §5): daily for weekly and monthly, weekly for
+  // bi-weekly, monthly for quarterly and yearly
   inputReports?: { versionId: Id; kind: ReportKind; period: {...}; bodyMd: string; status: string }[];
   context?: RecordView[];          // the project's 'context' notes
-  previous?: { versionId: Id; bodyMd: string };   // the last version, for continuity and plan vs. actual
+  previous?: { versionId: Id; bodyMd: string };   // this report's last version, for continuity
+  // bi-weekly: the previous bi-weekly, for plan vs. actual; its statements may be cited
+  previousPeriod?: { versionId: Id; period: {...}; bodyMd: string; statements: {anchor; text}[] };
   stats: { metric: string; value: unknown }[];    // deterministic numbers the report may cite
-  gaps: { missingDays: IsoDate[]; staleInputs: Id[]; coverage: Coverage };
+  gaps: { missingDays: IsoDate[];                 // weekly and monthly: weekdays without a daily
+          missingInputs?: { kind; start; title }[]; // bi-weekly and up: finished weeks/months without a report
+          staleInputs: Id[]; coverage: Coverage };
   refFormat: string;               // the citation syntax (§4.2), included so agents never guess
   inputHash: string;               // echoed back on submit
 }

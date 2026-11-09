@@ -333,3 +333,37 @@ describe('REST API: direct generation and export', () => {
     expect(text).toContain('[^1]');
   });
 });
+
+describe('REST API: career log', () => {
+  test('add, approve, export, delete', async () => {
+    const projects = await json(await call('GET', '/projects'));
+    const sdk = projects.items.find((x: { slug: string }) => x.slug === 'sdk');
+    const created = await call('POST', '/career', {
+      projectId: sdk.id,
+      date: '2026-02-10',
+      bodyMd: '- Shipped the SDK (PIX-9)',
+    });
+    expect(created.status).toBe(201);
+    const entry = await json(created);
+    expect(entry).toMatchObject({ title: 'Q1 2026', status: 'draft' });
+    expect(entry.warnings[0].reason).toBe('an issue key');
+
+    const empty = await call('GET', '/career/export');
+    expect(await empty.text()).toBe('# Career log\n');
+    const ok = await json(
+      await call('PATCH', `/career/${entry.id}`, {
+        bodyMd: '- Shipped the SDK',
+        status: 'approved',
+      }),
+    );
+    expect(ok).toMatchObject({ status: 'approved', warnings: [] });
+    expect((await json(await call('GET', '/career'))).items.length).toBe(1);
+    const exp = await call('GET', '/career/export');
+    expect(exp.headers.get('content-disposition')).toContain('career-log.md');
+    expect(await exp.text()).toBe('# Career log\n\n## Q1 2026\n- Shipped the SDK\n');
+
+    expect((await call('PATCH', `/career/${entry.id}`, {})).status).toBe(400);
+    expect((await call('DELETE', `/career/${entry.id}`)).status).toBe(204);
+    expect((await call('DELETE', `/career/${entry.id}`)).status).toBe(404);
+  });
+});

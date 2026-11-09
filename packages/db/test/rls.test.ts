@@ -746,6 +746,43 @@ describe(`RLS on ${testTarget()}`, () => {
     });
   });
 
+  describe('career_entries', () => {
+    test('career_entries_*: your own, in your projects, from versions you can read', async () => {
+      cover(
+        'career_entries_select',
+        'career_entries_insert',
+        'career_entries_update',
+        'career_entries_delete',
+      );
+      const [v] = (await s.db.execute<{ id: string }>(sql`select id from report_versions limit 1`))
+        .rows;
+      const row = (id: string, who: keyof Seed['u'], project: keyof Seed['p'], src = 'null') =>
+        `insert into career_entries (id, workspace_id, project_id, user_id, period_start, body_md, source_version_id)
+         values ('${id}', '${s.ws.W}', '${s.p[project]}', '${s.u[who]}', '2026-10-01', '- Shipped it', ${src})`;
+      const mine = newId();
+      expect(await s.as('bob', (tx) => affected(tx, row(mine, 'bob', 'P', `'${v?.id}'`)))).toBe(1);
+      // Not for someone else, not outside your projects, not from a version you can't read.
+      await expect(s.as('dave', (tx) => affected(tx, row(newId(), 'bob', 'P')))).rejects.toThrow(
+        RLS_VIOLATION,
+      );
+      await expect(s.as('carol', (tx) => affected(tx, row(newId(), 'carol', 'Q')))).rejects.toThrow(
+        RLS_VIOLATION,
+      );
+      await expect(
+        s.as('dave', (tx) => affected(tx, row(newId(), 'dave', 'P', `'${v?.id}'`))),
+      ).rejects.toThrow(RLS_VIOLATION);
+
+      expect(await s.as('bob', (tx) => visible(tx, 'career_entries'))).toBe(1);
+      expect(await s.as('dave', (tx) => visible(tx, 'career_entries'))).toBe(0);
+      const upd = `update career_entries set status = 'approved' where id = '${mine}'`;
+      expect(await s.as('dave', (tx) => affected(tx, upd))).toBe(0);
+      expect(await s.as('bob', (tx) => affected(tx, upd))).toBe(1);
+      const del = `delete from career_entries where id = '${mine}'`;
+      expect(await s.as('dave', (tx) => affected(tx, del))).toBe(0);
+      expect(await s.as('bob', (tx) => affected(tx, del))).toBe(1);
+    });
+  });
+
   describe('daily bundles', () => {
     /** A bundle for a project and date holding the given revisions (as superuser). */
     async function seedBundle(

@@ -11,6 +11,8 @@ export { type MigrationStatus, migrate, migrationStatus } from './migrate';
 export * as authRepo from './repos/auth';
 export type { BundleRow } from './repos/bundles';
 export * as bundleRepo from './repos/bundles';
+export type { CareerEntryRow } from './repos/career';
+export * as careerRepo from './repos/career';
 export type { ConnectorAccountRow, IdentityRow, SyncStateRow } from './repos/connectors';
 export * as connectorRepo from './repos/connectors';
 export type { LocalOwner } from './repos/local';

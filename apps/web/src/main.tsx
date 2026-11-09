@@ -15,6 +15,7 @@ import { QuickAdd } from './components/QuickAdd';
 import { TokenGate } from './components/TokenGate';
 import { Button, ErrorNote, inputClass, Panel } from './components/ui';
 import { isIsoDate } from './dates';
+import { CareerPage } from './pages/Career';
 import { DayPage } from './pages/Day';
 import { InboxPage } from './pages/Inbox';
 import { RecordPage } from './pages/Record';
@@ -117,6 +118,9 @@ function Header({ onAdd }: { onAdd: () => void }) {
           </Link>
           <Link to="/reports" className={nav}>
             Reports
+          </Link>
+          <Link to="/career" className={nav}>
+            Career
           </Link>
           <Link to="/inbox" className={nav}>
             Inbox
@@ -243,6 +247,12 @@ const reportRoute = createRoute({
   },
 });
 
+const careerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/career',
+  component: CareerPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings',
@@ -267,6 +277,7 @@ const router = createRouter({
     searchRoute,
     reportsRoute,
     reportRoute,
+    careerRoute,
     settingsRoute,
   ]),
   defaultNotFoundComponent: () => <Panel>Page not found.</Panel>,

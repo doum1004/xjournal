@@ -88,20 +88,30 @@ export function inputKindOf(kind: ReportKind): ReportKind | null {
     case 'daily':
       return null;
     case 'weekly':
-    case 'biweekly':
     case 'monthly':
       return 'daily';
+    // Bi-weekly periods are always anchor-aligned pairs of weeks, so they're built from the
+    // two weekly reports (spec §5.3).
+    case 'biweekly':
+      return 'weekly';
     case 'quarterly':
     case 'yearly':
       return 'monthly';
   }
 }
 
+/** The period just before `period` of the same kind. */
+export function previousPeriod(kind: ReportKind, period: Period, opts: PeriodOptions = {}): Period {
+  return periodFor(kind, addDays(period.start, -1), opts);
+}
+
 /** Kinds built (directly) from `kind`, for staleness propagation. */
 export function parentKindsOf(kind: ReportKind): ReportKind[] {
   switch (kind) {
     case 'daily':
-      return ['weekly', 'biweekly', 'monthly'];
+      return ['weekly', 'monthly'];
+    case 'weekly':
+      return ['biweekly'];
     case 'monthly':
       return ['quarterly', 'yearly'];
     default:

@@ -499,7 +499,7 @@ create table report_versions (
 create table report_inputs (
   report_version_id text not null references report_versions(id),
   workspace_id      text not null,
-  input_type        text not null check (input_type in ('bundle', 'report_version', 'guidance_version')),
+  input_type        text not null check (input_type in ('bundle', 'report_version', 'previous_report', 'guidance_version')),  -- previous_report: a bi-weekly's previous bi-weekly
   input_id          text not null,
   input_hash        text not null,
   primary key (report_version_id, input_type, input_id)
@@ -552,7 +552,27 @@ create table guidance_versions (
 );
 ```
 
-**Staleness:** when a bundle's `content_hash` changes, or a guidance or input report gets a new version, a job compares each dependent report's `report_inputs.input_hash` with the current value. On a mismatch it sets `reports.status = 'stale'` and `stale_since`, and repeats for the next level up (daily → weekly → bi-weekly/monthly → quarterly → yearly).
+**Staleness:** when a bundle's `content_hash` changes, or a guidance or input report gets a new version, a job compares each dependent report's `report_inputs.input_hash` with the current value. On a mismatch it sets `reports.status = 'stale'` and `stale_since`, and repeats for the next level up (daily → weekly → bi-weekly, and daily → monthly → quarterly/yearly). A bi-weekly is also stale when the previous bi-weekly it compared against gets a new version.
+
+```sql
+-- The career log (spec §9.8): public-safe bullets per quarter, private to their owner (RLS:
+-- user_id = app_uid(), a member of the project). A quarterly version's "## Career log" section
+-- becomes the draft; the user edits and approves it, and exports it by hand.
+create table career_entries (
+  id                text primary key,
+  workspace_id      text not null references workspaces(id),
+  project_id        text not null references projects(id),
+  user_id           text not null references users(id),
+  period_start      date not null,                -- the quarter's first day
+  body_md           text not null,
+  source_version_id text references report_versions(id),
+  status            text not null default 'draft' check (status in ('draft', 'approved')),
+  approved_at       timestamptz,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  unique (user_id, project_id, period_start)
+);
+```
 
 **Audience filtering:** the inputs for a report are the bundle items whose revision is visible to **every** user in `report_audience`. The validator rejects a version citing anything else (spec §9.4).
 

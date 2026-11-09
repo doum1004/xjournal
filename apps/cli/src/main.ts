@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -75,6 +75,8 @@ Import:
   import reports [DIR] --project SLUG
                                      The imported daily logs and the prototype's reviews as
                                      report versions (run after import worklog). Safe to repeat.
+  import career [DIR] --project SLUG The prototype's career/experience.md, one approved
+                                     entry per quarter. Safe to repeat.
   import confluence-worklog --from D --to D --project SLUG|inbox [--dry-run]
                                      The Confluence work log's month pages ("November,
                                      2026"). Same records as the file import: one per day.
@@ -657,10 +659,26 @@ const commands: Record<string, Handler> = {
       );
       return 0;
     }
+    if (what === 'career' && values.project) {
+      const c = await ctx(h);
+      const file = join(dirArg ?? join(homedir(), 'worklog'), 'career', 'experience.md');
+      if (!existsSync(file)) {
+        console.error(`No career log at ${file}`);
+        return 1;
+      }
+      const r = await svc.importCareer(
+        c,
+        await projectIdFor(c, values.project),
+        readFileSync(file, 'utf8'),
+      );
+      console.log(`Career log: ${r.created} quarters imported, ${r.skipped} already there.`);
+      return 0;
+    }
     if (!values.project || (what !== 'worklog' && what !== 'confluence-worklog')) {
       console.error(
         'Usage: hub import worklog [DIR] --project SLUG|inbox [--dry-run]\n' +
           '       hub import reports [DIR] --project SLUG   (after the worklog import)\n' +
+          '       hub import career [DIR] --project SLUG\n' +
           '       hub import confluence-worklog --from D --to D --project SLUG|inbox [--dry-run]',
       );
       return 1;

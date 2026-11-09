@@ -327,6 +327,28 @@ export function createApi(deps: ApiDeps) {
     });
   });
 
+  // The career log (spec §9.8): private to its owner, exported only by them.
+  api.get('/career', async (c) =>
+    c.json({ items: await svc.listCareer(c.get('ctx'), c.req.query('projectId')) }),
+  );
+  api.post('/career', async (c) =>
+    c.json(await svc.createCareerEntry(c.get('ctx'), await body(c)), 201),
+  );
+  api.get('/career/export', async (c) => {
+    const { filename, markdown } = await svc.exportCareer(c.get('ctx'), c.req.query());
+    return c.body(markdown, 200, {
+      'content-type': 'text/markdown; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+    });
+  });
+  api.patch('/career/:id', async (c) =>
+    c.json(await svc.updateCareerEntry(c.get('ctx'), c.req.param('id'), await body(c))),
+  );
+  api.delete('/career/:id', async (c) => {
+    await svc.deleteCareerEntry(c.get('ctx'), c.req.param('id'));
+    return c.body(null, 204);
+  });
+
   // Guidance (api.md §3.6).
   api.get('/guidance', async (c) =>
     c.json({ items: await svc.listGuidance(c.get('ctx'), c.req.query('projectId')) }),

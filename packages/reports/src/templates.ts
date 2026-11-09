@@ -77,13 +77,71 @@ Sections: "## TL;DR" · "## Highlights" (top 3–5, each with its impact) · "##
 ${CITATIONS}`,
 };
 
-const GENERIC = (kind: ReportKind, from: string): Template => ({
-  version: `${kind}@1`,
-  sections: ['TL;DR', 'Highlights', 'By area', 'Numbers', 'Next'],
-  instructions: `Write the ${kind} review from the ${from} reports (inputReports) and stats, with "## TL;DR", "## Highlights", "## By area", "## Numbers" (from stats) and "## Next".
+const BIWEEKLY: Template = {
+  version: 'biweekly@2',
+  sections: [...WEEKLY.sections.slice(0, -1), 'Plan vs. actual', 'Next two weeks'],
+  instructions: `Write the bi-weekly review from its two weekly reports (inputReports) and stats.
+
+Sections: "## TL;DR" (2–3 lines) · "## Shipped" · "## Progress by area" · "## Reviews & collaboration" · "## Meetings & events" · "## Blockers / risks" · "## Plan vs. actual" · "## Next two weeks" (3–5 items).
+
+- Cite the weekly reports' statements: [[v:<versionId>#<anchor>]].
+- "## Plan vs. actual": take the "Next" items of the previous bi-weekly (in \`previousPeriod\`) and mark each ✅ done, 🟡 partly or ❌ not done, with a reason. Cite the plan item ([[v:<previousPeriod.versionId>#<anchor>]]) and the evidence of what happened. With no previousPeriod, write one line saying there was no earlier plan, citing a statement it follows from, or leave the section out.
+- Weeks in gaps.missingInputs have no weekly report: say so under Blockers / risks, and don't invent their content.
 
 ${CITATIONS}`,
-});
+};
+
+const CAREER_RULES = `"## Career log": 3–6 public-safe accomplishment bullets for the user's career log (it can leave the Work domain, by the user's hand only):
+- Write them as on a public profile: impact, scope, the user's role and the technologies.
+- Leave out internal ticket keys, repo names, customer names, internal hostnames and IPs, URLs, unreleased plans, and financial or headcount figures. Use public product names only. When unsure, generalize ("a major automotive customer").
+- End with a bullet "Skills: <comma-separated list>".
+- Cite each bullet like any other statement; the citations are dropped when the bullets are copied to the career log.`;
+
+const QUARTERLY: Template = {
+  version: 'quarterly@2',
+  sections: [
+    'Summary',
+    'Impact themes',
+    'Numbers',
+    'Growth',
+    "What I'd do differently",
+    'Next quarter goals',
+    'Career log',
+  ],
+  instructions: `Write the quarterly review from the quarter's monthly reports (inputReports) and stats, in the first person.
+
+Sections: "## Summary" (one paragraph) · "## Impact themes" (3–5, each as **Problem → What I did → Result**) · "## Numbers" (from stats only) · "## Growth" (skills, new areas, ownership taken on) · "## What I'd do differently" · "## Next quarter goals" · "## Career log".
+
+- Separate impact from activity. Cite the monthly reports' statements: [[v:<versionId>#<anchor>]].
+- Write "## Numbers" as bullets, each citing its metric: "- PRs merged: 42 [[s:prs_merged]]".
+- Months in gaps.missingInputs have no monthly report: say so in the Summary, lean on stats for them, and don't guess.
+
+${CAREER_RULES}
+
+${CITATIONS}`,
+};
+
+const YEARLY: Template = {
+  version: 'yearly@2',
+  sections: [
+    'The year in one paragraph',
+    'Quarter by quarter',
+    'Top accomplishments',
+    'Numbers',
+    'Skills grown',
+    'Recognition & feedback',
+    'Next year',
+  ],
+  instructions: `Write the yearly review from the year's monthly reports (inputReports) and stats, in the first person.
+
+Sections: "## The year in one paragraph" · "## Quarter by quarter" (2–3 lines each) · "## Top accomplishments" (5–8, impact first) · "## Numbers" (year totals, from stats only) · "## Skills grown" · "## Recognition & feedback" · "## Next year".
+
+- Cite the monthly reports' statements: [[v:<versionId>#<anchor>]].
+- Write "## Numbers" as bullets, each citing its metric.
+- Months in gaps.missingInputs have no monthly report: say so in the first paragraph, lean on stats, and don't guess.
+
+${CITATIONS}`,
+};
 
 export function templateFor(kind: ReportKind): Template {
   switch (kind) {
@@ -92,17 +150,13 @@ export function templateFor(kind: ReportKind): Template {
     case 'weekly':
       return WEEKLY;
     case 'biweekly':
-      return {
-        ...WEEKLY,
-        version: 'biweekly@1',
-        instructions: `${WEEKLY.instructions}\n\nAdd "## Plan vs. actual": check the previous bi-weekly's "Next" items (in \`previous\`) as ✅, 🟡 or ❌ with a reason.`,
-      };
+      return BIWEEKLY;
     case 'monthly':
       return MONTHLY;
     case 'quarterly':
-      return GENERIC('quarterly', 'monthly');
+      return QUARTERLY;
     case 'yearly':
-      return GENERIC('yearly', 'monthly');
+      return YEARLY;
   }
 }
 

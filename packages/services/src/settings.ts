@@ -1,4 +1,10 @@
-import { isTimeZone, type ProjectView, type WorkspaceView, zVisibility } from '@xjournal/core';
+import {
+  isTimeZone,
+  type ProjectView,
+  type WorkspaceView,
+  zIsoDate,
+  zVisibility,
+} from '@xjournal/core';
 
 export type { WorkspaceView };
 
@@ -35,6 +41,7 @@ export async function getWorkspace(ctx: Ctx): Promise<WorkspaceView> {
       domain: ws.domain,
       timeZone: ws.timeZone,
       weekStart: ws.weekStart,
+      biweeklyAnchor: ws.biweeklyAnchor,
       isOwner: ws.ownerUserId === ctx.actor.userId,
     };
   });
@@ -45,6 +52,7 @@ export const zWorkspacePatch = z
     name: z.string().trim().min(1).max(200).optional(),
     timeZone: zTimeZone.optional(),
     weekStart: z.number().int().min(1).max(7).optional(),
+    biweeklyAnchor: zIsoDate.optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), 'nothing to change');
 
@@ -56,6 +64,7 @@ export async function updateWorkspace(ctx: Ctx, input: unknown): Promise<Workspa
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.timeZone !== undefined ? { timeZone: patch.timeZone } : {}),
       ...(patch.weekStart !== undefined ? { weekStart: patch.weekStart } : {}),
+      ...(patch.biweeklyAnchor !== undefined ? { biweeklyAnchor: patch.biweeklyAnchor } : {}),
     }),
   );
   if (!ok) throw forbidden('Only the workspace owner can change its settings');

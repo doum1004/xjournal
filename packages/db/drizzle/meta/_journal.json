@@ -57,6 +57,20 @@
       "when": 1794211643369,
       "tag": "0007_exports_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794259753092,
+      "tag": "0008_career",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794259758408,
+      "tag": "0009_career_rls",
+      "breakpoints": true
     }
   ]
 }

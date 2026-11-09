@@ -123,6 +123,8 @@ export interface WorkspaceView {
   timeZone: string;
   /** 1 = Monday … 7 = Sunday (ISO). */
   weekStart: number;
+  /** Any date in the first week of a bi-weekly pair (spec §5.7). */
+  biweeklyAnchor: string;
   isOwner: boolean;
 }
 
@@ -232,8 +234,21 @@ export interface ReportInputs {
   }[];
   context?: RecordView[];
   previous?: { versionId: string; bodyMd: string };
+  /** The same kind's previous period, for a bi-weekly's plan vs. actual (spec §5.3). */
+  previousPeriod?: {
+    versionId: string;
+    period: { start: string; endExcl: string; title: string };
+    bodyMd: string;
+    statements: { anchor: string; text: string }[];
+  };
   stats: StatView[];
-  gaps: { missingDays: string[]; staleInputs: string[]; coverage: Coverage };
+  gaps: {
+    missingDays: string[];
+    /** Input reports (weekly or monthly) the period should have but doesn't, up to today. */
+    missingInputs?: { kind: ReportKind; start: string; title: string }[];
+    staleInputs: string[];
+    coverage: Coverage;
+  };
   refFormat: string;
   inputHash: string;
 }
@@ -259,4 +274,19 @@ export interface StatusView {
     lastSuccessAt: string | null;
     error: string | null;
   }[];
+}
+
+/** A career log entry (spec §9.8): one quarter's public-safe bullets, private to its owner. */
+export interface CareerEntryView {
+  id: string;
+  projectId: string;
+  periodStart: string;
+  title: string;
+  bodyMd: string;
+  status: 'draft' | 'approved';
+  sourceVersionId: string | null;
+  approvedAt: string | null;
+  updatedAt: string;
+  /** Things that may not be public-safe, found by a deterministic check. */
+  warnings: { line: number; text: string; reason: string }[];
 }

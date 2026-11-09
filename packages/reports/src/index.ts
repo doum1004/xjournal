@@ -14,6 +14,7 @@ export {
   type PeriodOptions,
   parentKindsOf,
   periodFor,
+  previousPeriod,
   weekStartOf,
 } from './periods';
 export { REF_FORMAT, type Template, templateFor } from './templates';
