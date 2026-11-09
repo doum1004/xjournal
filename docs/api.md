@@ -119,21 +119,13 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Pending devices | `GET /projects/{p}/devices?status=pending` | manager | |
 | Approve or reject a device | `POST /devices/{passkeyId}/approve`, `POST /devices/{passkeyId}/reject` | manager | |
 
-### 3.2a Workspace, connectors, identities (owner user only)
-
-Connectors and identities belong to the user who connected them and are never shared (spec §9.2). Credentials are write-only: they're accepted on create or replace and never returned (`hasSecret` says one is stored).
+### 3.2a Workspace
 
 | Operation | REST | Min. role | MCP |
 |---|---|---|---|
-| Workspace settings | `GET /workspace`, `PATCH /workspace` `{name?, timeZone?, weekStart?}` | workspace owner | |
-| Connector kinds | `GET /connector-kinds` → `[{kind, displayName, authTypes, streams, policy, configSchema}]` | signed in | |
-| List connectors | `GET /connectors` → `ConnectorView[]` (status, projects, per-stream last sync, error, history floor) | owner user | (in `get_status`) |
-| Connect | `POST /connectors` `{kind, displayName?, config, secret?, projectIds, defaultVisibility?, backfillFrom?}` → `ConnectorView` | owner user; contributor in each project | |
-| Update | `PATCH /connectors/{id}` `{displayName?, config?, projectIds?}` | owner user | |
-| Replace the credential | `PUT /connectors/{id}/secret` `{secret}` → 204 | owner user | |
-| Sync now | `POST /connectors/{id}/sync` `{streams?, backfillFrom?}` → `SyncResult` (local mode) or 202 + job (hosted) | owner user | |
-| Disconnect | `DELETE /connectors/{id}` → 204 (deletes the credential; records stay) | owner user | |
-| Identities | `GET /identities?source=`, `POST /identities` `{source, accountKey, aliases?}`, `DELETE /identities/{id}` | owner user | |
+| Workspace settings | `GET /workspace` → `{id, name, domain, timeZone, weekStart, isOwner}`, `PATCH /workspace` `{name?, timeZone?, weekStart?}` | member / workspace owner | |
+| Project settings | `PATCH /projects/{p}` `{name?, timeZone? (null: the workspace's), defaultNoteVisibility?}` | manager | |
+| Archive a project | `POST /projects/{p}/archive` → 204 | owner | |
 
 ### 3.3 Notes, records, Inbox, search
 
@@ -159,7 +151,7 @@ Connectors and identities belong to the user who connected them and are never sh
 |---|---|---|---|
 | Days in a range | `GET /projects/{p}/days?from=&to=` → `[{date, recordCount, mineCount, bundleHash, dirty, daily: {reportId, status, versionId} \| null, coverage}]` | viewer | |
 | One day | `GET /projects/{p}/days/{date}` → `{bundle, workItems: [{id, title, records: RecordView[]}], unlinked: RecordView[], daily: ReportVersionView \| null, coverage}` | viewer (records filtered by visibility) | `get_day` |
-| Rebuild a day's bundle | `POST /projects/{p}/days/{date}/rebuild` → 202 | contributor | |
+| Rebuild a day's bundle | `POST /projects/{p}/days/{date}/rebuild` → `{date, hash, changed, items}` | contributor | |
 | Status | `GET /status?projectId=` → `{openIssues, prsInFlight, staleReports, missingDays, inboxCount, pendingSuggestions, pendingDevices, connectors: Coverage}` | viewer | `get_status` |
 | Stats | `GET /stats?projectId=&from=&to=&metrics=` → `{metrics: [{metric, value, query}]}` (deterministic, spec §5.8) | viewer | `get_stats` |
 
@@ -199,23 +191,31 @@ Connectors and identities belong to the user who connected them and are never sh
 
 ### 3.8 Connectors, identities, rules
 
+Connectors and identities belong to the user who connected them and are never shared (spec §9.2). Credentials are write-only: accepted on connect or replace, never returned (`hasSecret` says one is stored); locally they live in the OS keychain.
+
 | Operation | REST | Min. role | MCP |
 |---|---|---|---|
-| List my connectors | `GET /connectors` | owner user | (in `get_status`) |
-| Connect (token) | `POST /connectors` `{source, displayName, authType: 'pat', secret, config}` → the secret goes to the secret store and is never returned | owner user | |
+| Connector kinds | `GET /connector-kinds` → `[{kind, displayName, authTypes, streams, policy, configSchema}]` (`configSchema`: JSON Schema of the config) | signed in | |
+| List my connectors | `GET /connectors` → `ConnectorView[]`: status, projects, and per stream the last success, last error and history floor | owner user | (in `get_status`) |
+| Connect (token) | `POST /connectors` `{kind, displayName?, config, secret?, projectIds, defaultVisibility?, backfillFrom?}` → `ConnectorView`. Maps the account's login as an identity. | owner user; contributor in each project | |
 | Connect (OAuth) | `GET /connectors/oauth/{provider}/start` → redirect; `GET /connectors/oauth/{provider}/callback` | owner user | |
-| Update filters | `PATCH /connectors/{c}` `{config}` | owner user | |
-| Sync now | `POST /connectors/{c}/sync` `{streams?, backfillFrom?}` → 202 | owner user | |
-| Disconnect | `DELETE /connectors/{c}` `{keepRecords: boolean}` | owner user | |
-| Attach to a project | `PUT /projects/{p}/sources/{c}` `{defaultVisibility}`, `DELETE /projects/{p}/sources/{c}` | contributor (and owner user of the connector) | |
+| Update | `PATCH /connectors/{c}` `{displayName?, config?, projectIds?}`. The source (e.g. the host) can't change. | owner user | |
+| Replace the credential | `PUT /connectors/{c}/secret` `{secret}` → 204 | owner user | |
+| Sync now | `POST /connectors/{c}/sync` `{streams?, backfillFrom?}` → 202 `{queued, alreadyRunning}` (one sync per account at a time); without the job queue, the `SyncResult` | owner user | |
+| Disconnect | `DELETE /connectors/{c}` → 204. Deletes the credential; records stay. | owner user | |
 | Webhooks | `POST /projects/{p}/hooks` `{name}` → `{url, secret}` (**secret shown once**), `DELETE /projects/{p}/hooks/{id}` | manager | |
-| Identities | `GET /identities`, `POST /identities` `{source, accountKey, aliases?}`, `DELETE /identities/{id}` | owner user | |
-| Project rules | `GET /rules`, `POST /rules` `{projectId, priority, match}`, `PUT /rules/{id}` (`If-Match`), `POST /rules/preview` `{match}` → the records it would move | workspace owner / manager (own projects) | |
+| Identities | `GET /identities?source=`, `POST /identities` `{source, accountKey, aliases?}`, `DELETE /identities/{id}` | owner user | |
+| Project rules | `GET /rules`, `POST /rules` `{projectId, priority?, match}`, `PUT /rules/{id}` (`If-Match: <version>`, 412 when stale), `DELETE /rules/{id}` (deactivates) | members read; manager or workspace owner write | |
+| Rule preview | `POST /rules/preview` `{match}` → `{matches, total}`: the Inbox records it would move | signed in | |
+| Apply rules | `POST /rules/apply` → `{routed, byProject}`: files matching Inbox records (`routed_by = 'rule'`) | owner of the records | |
+
+`match` (spec §8.4): any of `source`, `repo` (GitHub), `project` (Jira), `space` (Confluence) as patterns with `*`, ignoring case; `kinds: RecordKind[]`; `titleContains`. All given conditions must hold; the lowest priority matching rule wins. Connector syncs apply rules to new records ahead of the account's own project.
 
 ### 3.9 Jobs and audit
 
 | Operation | REST | Min. role |
 |---|---|---|
+| Morning run | `POST /runs/morning` → 202 `{queued, alreadyRunning}`: sync every connector, then rebuild bundles (spec §5.1). Also scheduled daily. | owner user |
 | Job status | `GET /jobs/{id}` → `{state: 'queued' \| 'running' \| 'done' \| 'failed', progress?, result?, error?}` | the caller who started it |
 | Audit log | `GET /audit?projectId=&from=&to=&action=` | workspace owner; project owners for their projects |
 

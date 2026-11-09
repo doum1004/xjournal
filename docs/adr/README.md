@@ -9,5 +9,6 @@ Short records of decisions that are expensive to reverse, and of the M0 spikes (
 | [0003](0003-pg-boss-and-drizzle-on-bun.md) | pg-boss and Drizzle (node-postgres) on Bun; no Node fallback | Accepted (spike 3 confirmed) |
 | [0004](0004-pglite-parity.md) | PGlite 0.4.x (Postgres 17) for tests, parity-checked against Docker Postgres 17 | Accepted (spike 4 confirmed) |
 | [0005](0005-rls-roles-and-helpers.md) | RLS with two group roles (`hub_app`, `hub_auth`) and SECURITY DEFINER helpers | Accepted |
+| [0006](0006-bundles-sync-and-the-morning-run.md) | Pure connectors with a resumable sync runner; system-built bundles kept stale-aware by a trigger; the pg-boss morning run | Accepted (M2) |
 
 Format: context, decision, evidence, consequences, open items. Add a new ADR rather than rewriting an accepted one; mark the old one superseded.

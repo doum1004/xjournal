@@ -440,6 +440,12 @@ create table bundle_items (
 
 A bundle covers **every** record of its project and date, regardless of visibility. Visibility is applied when a report's inputs are chosen for its audience (§7).
 
+**How bundles are kept current** (docs/adr/0006):
+- They're built by a system job (`withSystem`, the migration role), since no user can see every record. The hash covers the sorted current revision IDs of the day's non-hidden records plus the coverage.
+- A trigger on `records` (`mark_bundles_dirty`, SECURITY DEFINER) sets `dirty_since` on the bundles of a record's old and new `(project_id, applicable_date)` whenever its day, project, current revision or hidden state changes. A day with records but no bundle counts as stale too.
+- `coverage` is keyed by connector account: `{source, status, truncatedBefore?}`, with `status` one of `complete` (every stream synced past the end of the day, in the project's time zone), `pending`, `error` or `truncated` (a stream's history floor is after the day starts). It holds no sync timestamps, so a finished day's hash stops changing.
+- The morning run rebuilds every day of the last 14 and every stale day before them; a rebuild that finds the same hash only clears `dirty_since`.
+
 ---
 
 ## 7. Reports and guidance (Layers 3–4)
@@ -713,6 +719,7 @@ Policies (summary; each table gets `enable row level security` plus `force row l
 | `comments` | As the target, plus the comment's own visibility | Insert: role ≥ commenter. Update or delete: the author. `hidden_*`: role ≥ manager. |
 | `reports`, `report_versions`, `evidence_refs` | Caller is in `report_audience` | Insert: role ≥ contributor, and the validator has passed |
 | `guidance`, `guidance_versions` | As `visibility` | Project scope: role ≥ manager. Report scope: role ≥ contributor. |
+| `daily_bundles`, `bundle_items` | Bundles: members of the project. Items: only revisions of records the caller can see. | System job only (no `hub_app` write grants) |
 | `connector_accounts`, `identities`, `access_tokens`, `passkeys`, `sessions` | **Owner user only** | Owner user only (approval of `passkeys.status`: role ≥ manager in a shared project) |
 | `audit_events` | Workspace owner, plus project owners for their projects | Insert-only (service role) |
 | `share_links` | Role ≥ manager | Role ≥ manager |
