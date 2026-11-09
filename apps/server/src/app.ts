@@ -1,10 +1,10 @@
-import { timingSafeEqual } from 'node:crypto';
 import { requireMcpAuth } from '@better-auth/mcp';
 import { type HubAuth, redeemInvite } from '@xjournal/auth';
 import { type DbHandle, migrationStatus } from '@xjournal/db';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { bearer, createApi, problem, sameToken } from './api';
 import type { Config } from './config';
 import { handleMcp } from './mcp';
 
@@ -13,23 +13,6 @@ export interface AppDeps {
   /** The service-layer database (hub_app via withActor). */
   db: DbHandle;
   auth?: HubAuth;
-}
-
-const problem = (status: number, code: string, title: string, detail?: string) =>
-  Response.json(
-    { type: `about:blank`, title, status, code, ...(detail ? { detail } : {}) },
-    { status, headers: { 'content-type': 'application/problem+json' } },
-  );
-
-function bearer(req: Request): string | null {
-  const h = req.headers.get('authorization');
-  return h?.startsWith('Bearer ') ? h.slice(7) : null;
-}
-
-function sameToken(a: string, b: string): boolean {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
 }
 
 export function createApp(deps: AppDeps) {
@@ -62,7 +45,7 @@ export function createApp(deps: AppDeps) {
           r.code === 'invite_code_invalid'
             ? `${r.attemptsRemaining} attempts remaining`
             : undefined;
-        return problem(r.status, r.code, 'Invite not accepted', detail);
+        return problem(r.status, r.code, 'Invite not accepted', detail ? { detail } : {});
       }
       return auth.api.generatePasskeyRegistrationOptions({
         query: { context: r.ticket },
@@ -78,6 +61,9 @@ export function createApp(deps: AppDeps) {
     app.get('/.well-known/oauth-protected-resource/*', (c) => auth.handler(c.req.raw));
     app.get('/.well-known/oauth-protected-resource', (c) => auth.handler(c.req.raw));
   }
+
+  // REST API (api.md §3), after the auth routes so /api/v1/auth/* is matched first.
+  app.route('/api/v1', createApi({ config, db }));
 
   // MCP (api.md §5). Local mode: the per-install token. Hosted: OAuth 2.1 access tokens.
   const oauthMcp = auth

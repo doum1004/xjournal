@@ -13,6 +13,7 @@
     "@xjournal/auth": "workspace:*",
     "@xjournal/core": "workspace:*",
     "@xjournal/db": "workspace:*",
+    "@xjournal/services": "workspace:*",
     "drizzle-orm": "0.45.4",
     "hono": "4.13.17",
     "pg-boss": "12.38.1",

@@ -6,5 +6,10 @@
   "description": "Service layer (api.md §3) with authorization",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xjournal/core": "workspace:*",
+    "@xjournal/db": "workspace:*",
+    "zod": "4.6.7"
   }
 }

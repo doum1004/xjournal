@@ -17,7 +17,9 @@
         "hub": "./src/main.ts",
       },
       "dependencies": {
+        "@xjournal/core": "workspace:*",
         "@xjournal/db": "workspace:*",
+        "@xjournal/services": "workspace:*",
       },
     },
     "apps/mcp-proxy": {
@@ -39,6 +41,7 @@
         "@xjournal/auth": "workspace:*",
         "@xjournal/core": "workspace:*",
         "@xjournal/db": "workspace:*",
+        "@xjournal/services": "workspace:*",
         "drizzle-orm": "0.45.4",
         "hono": "4.13.17",
         "pg-boss": "12.38.1",
@@ -98,6 +101,11 @@
     "packages/services": {
       "name": "@xjournal/services",
       "version": "0.0.0",
+      "dependencies": {
+        "@xjournal/core": "workspace:*",
+        "@xjournal/db": "workspace:*",
+        "zod": "4.6.7",
+      },
     },
   },
   "packages": {

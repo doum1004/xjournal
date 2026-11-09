@@ -9,4 +9,10 @@ export {
 } from './client';
 export { type MigrationStatus, migrate, migrationStatus } from './migrate';
 export * as authRepo from './repos/auth';
+export type { LocalOwner } from './repos/local';
+export * as localRepo from './repos/local';
+export type { ProjectRow } from './repos/projects';
+export * as projectRepo from './repos/projects';
+export type { RecordRow, RevisionRow } from './repos/records';
+export * as recordRepo from './repos/records';
 export * as schema from './schema';
