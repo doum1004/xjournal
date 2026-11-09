@@ -77,8 +77,14 @@ Goal: prove the risky parts before building on them.
 - `identities`, `sync_states` with a history floor, `connector_accounts` with secrets in the OS keychain.
 - Project rules plus Inbox routing, with rule preview.
 - Daily bundles with coverage and content hashes; the pg-boss morning sync with catch-up (spec §5.1).
+- **Settings in the web UI**, so nothing needs the CLI:
+  - Workspace: name, time zone, week start.
+  - Projects: create, rename, time zone, default note visibility, archive.
+  - Connectors: add an account (e.g. GitHub: host, login, owner and noise filters, token entered once and never shown again), see each stream's status, last sync, errors and history floor, sync now, edit filters, disconnect.
+  - Identities: your logins, names and emails per source.
+  - Project rules, with the preview.
 
-**Done when:** the morning sync produces bundles at least as complete as the prototype's `collect` digest, for the same days.
+**Done when:** the morning sync produces bundles at least as complete as the prototype's `collect` digest, for the same days, and workspaces, projects, connectors and identities can all be managed from the web UI.
 
 ### M3 — Reports and MCP: replaces the `worklog` skill (L)
 

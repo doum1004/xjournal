@@ -50,6 +50,10 @@ Connectors:
   connector remove <id>              Disconnect and delete the stored token (records stay)
   sync [ID…] [--stream S]… [--from D] [--max-pages N]
                                      Sync all connected accounts, or the ones given
+  run [--days N] [--no-sync]         The morning run: sync every connector, then rebuild the
+                                     bundles of the last N days (default 14) and stale days
+  bundles [--project SLUG] [--date D]
+                                     Rebuild stale bundles (or one day's)
   identities                         Your accounts in each source ("is this mine?")
   identity add <source> <login> [--alias A]…
                                      e.g. identity add github:github.com octocat
@@ -345,6 +349,52 @@ const commands: Record<string, Handler> = {
       if (r.status === 'error') failed = true;
     }
     return failed ? 1 : 0;
+  },
+
+  async run(h, args) {
+    const { values } = parseArgs({
+      args,
+      options: { days: { type: 'string' }, 'no-sync': { type: 'boolean' } },
+    });
+    const r = await svc.morningRun(h.db, connectorDeps(), {
+      ...(values.days ? { days: Number(values.days) } : {}),
+      ...(values['no-sync'] ? { skipSync: true } : {}),
+    });
+    for (const x of r.syncs) {
+      const detail =
+        'streams' in x
+          ? x.streams
+              .map((st) => `${st.stream}: ${st.error ? `error` : `${st.created} new`}`)
+              .join(', ')
+          : x.error;
+      console.log(`sync ${x.source} [${x.status}] ${detail}`);
+    }
+    const b = r.bundles;
+    console.log(`bundles: ${b.built} built, ${b.changed} changed across ${b.projects} project(s)`);
+    return r.syncs.some((x) => x.status === 'error') ? 1 : 0;
+  },
+
+  async bundles(h, args) {
+    const { values } = parseArgs({
+      args,
+      options: { project: { type: 'string' }, date: { type: 'string' } },
+    });
+    const c = await ctx(h);
+    if (values.date) {
+      if (!values.project) {
+        console.error('--date needs --project');
+        return 1;
+      }
+      const r = await svc.rebuildDay(c, await projectIdFor(c, values.project), values.date);
+      console.log(
+        `${r.date}: ${r.items} item(s), ${r.changed ? 'changed' : 'unchanged'}  ${r.hash.slice(0, 12)}`,
+      );
+      return 0;
+    }
+    const projectIds = values.project ? [await projectIdFor(c, values.project)] : undefined;
+    const r = await svc.rebuildBundles(h.db, projectIds ? { projectIds } : {});
+    console.log(`bundles: ${r.built} built, ${r.changed} changed across ${r.projects} project(s)`);
+    return 0;
   },
 
   async identities(h) {

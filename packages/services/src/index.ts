@@ -1,4 +1,14 @@
 export {
+  type BuildResult,
+  buildBundle,
+  bundleHash,
+  coverageFor,
+  type RebuildOptions,
+  type RebuildSummary,
+  rebuildBundles,
+  rebuildDay,
+} from './bundles';
+export {
   addConnector,
   addIdentity,
   type ConnectorDeps,
@@ -15,6 +25,7 @@ export { getDay, listDays } from './days';
 export { type ErrorCode, parse, ServiceError } from './errors';
 export { type IngestRequest, type IngestResult, ingestRecords } from './ingest';
 export { type InitOptions, initLocal, localOwner } from './local';
+export { type MorningRunOptions, type MorningRunResult, morningRun } from './morning';
 export { atLeast, createProject, listProjects } from './projects';
 export {
   type AddNoteResult,
@@ -26,6 +37,15 @@ export {
   routeRecord,
   search,
 } from './records';
+export {
+  archiveProject,
+  getWorkspace,
+  replaceConnectorSecret,
+  updateConnector,
+  updateProject,
+  updateWorkspace,
+  type WorkspaceView,
+} from './settings';
 export {
   DEFAULT_BACKFILL_DAYS,
   type StreamSyncResult,

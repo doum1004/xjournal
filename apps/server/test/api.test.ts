@@ -104,7 +104,7 @@ describe('REST API, local mode', () => {
         recordCount: 2,
         mineCount: 2,
         bundleHash: null,
-        dirty: false,
+        dirty: true, // no bundle built yet
         daily: null,
         coverage: {},
       },
@@ -140,5 +140,116 @@ describe('REST API, local mode', () => {
 
     expect((await call('GET', '/nope')).status).toBe(404);
     expect((await call('POST', '/projects', { slug: 'sdk', name: 'dup' })).status).toBe(409);
+  });
+});
+
+describe('REST API: settings, connectors, identities, bundles', () => {
+  test('workspace and project settings', async () => {
+    const ws = await json(await call('GET', '/workspace'));
+    expect(ws).toMatchObject({ timeZone: 'UTC', weekStart: 1, isOwner: true });
+    const patched = await call('PATCH', '/workspace', { name: 'Work', weekStart: 7 });
+    expect(await json(patched)).toMatchObject({ name: 'Work', weekStart: 7 });
+    expect((await call('PATCH', '/workspace', { timeZone: 'Mars/Base' })).status).toBe(400);
+
+    const p = await json(await call('POST', '/projects', { slug: 'web', name: 'Web' }));
+    const renamed = await json(
+      await call('PATCH', `/projects/${p.id}`, { name: 'Website', timeZone: 'Asia/Seoul' }),
+    );
+    expect(renamed).toMatchObject({ name: 'Website', timeZone: 'Asia/Seoul' });
+    const inherit = await json(await call('PATCH', `/projects/${p.id}`, { timeZone: null }));
+    expect(inherit.timeZone).toBe('UTC');
+
+    expect((await call('POST', `/projects/${p.id}/archive`)).status).toBe(204);
+    const list = await json(await call('GET', '/projects'));
+    expect(list.items.map((x: { slug: string }) => x.slug)).not.toContain('web');
+  });
+
+  test('connect GitHub, edit it, replace the token, disconnect', async () => {
+    const kinds = await json(await call('GET', '/connector-kinds'));
+    const gh = kinds.items.find((k: { kind: string }) => k.kind === 'github');
+    expect(gh.streams.map((x: { key: string }) => x.key)).toEqual([
+      'events',
+      'search:opened',
+      'search:merged',
+    ]);
+    expect(gh.configSchema.properties.host.type).toBe('string');
+
+    const projects = await json(await call('GET', '/projects'));
+    const sdk = projects.items.find((x: { slug: string }) => x.slug === 'sdk');
+    const created = await call('POST', '/connectors', {
+      kind: 'github',
+      config: { host: 'github.com', login: 'octocat', excludeOwners: ['octocat'] },
+      secret: 'ghp_not_a_real_token',
+      projectIds: [sdk.id],
+    });
+    expect(created.status).toBe(201);
+    const c = await json(created);
+    expect(JSON.stringify(c)).not.toContain('ghp_not_a_real_token');
+    expect(c).toMatchObject({ kind: 'github', hasSecret: true, projectIds: [sdk.id] });
+
+    // The login was mapped as an identity.
+    const ids = await json(await call('GET', '/identities?source=github:github.com'));
+    expect(ids.items.map((i: { accountKey: string }) => i.accountKey)).toEqual(['octocat']);
+
+    const edited = await json(
+      await call('PATCH', `/connectors/${c.id}`, {
+        displayName: 'GitHub (personal)',
+        config: { host: 'github.com', login: 'octocat', includeOwners: ['acme'] },
+        projectIds: [],
+      }),
+    );
+    expect(edited).toMatchObject({ displayName: 'GitHub (personal)', projectIds: [] });
+    expect(edited.config.includeOwners).toEqual(['acme']);
+    const moveHost = await call('PATCH', `/connectors/${c.id}`, {
+      config: { host: 'ghe.example.test', login: 'octocat' },
+    });
+    expect(moveHost.status).toBe(400);
+
+    expect(
+      (await call('PUT', `/connectors/${c.id}/secret`, { secret: 'ghp_rotated' })).status,
+    ).toBe(204);
+    expect((await call('DELETE', `/connectors/${c.id}`)).status).toBe(204);
+    expect((await json(await call('GET', '/connectors'))).items).toEqual([]);
+    expect((await call('POST', `/connectors/${c.id}/sync`)).status).toBe(404);
+  });
+
+  test('identities add, conflict, delete', async () => {
+    const i = await call('POST', '/identities', {
+      source: 'jira:jira.example.test',
+      accountKey: 'sam',
+    });
+    expect(i.status).toBe(201);
+    const id = (await json(i)).id;
+    expect(
+      (await call('POST', '/identities', { source: 'jira:jira.example.test', accountKey: 'sam' }))
+        .status,
+    ).toBe(409);
+    expect((await call('DELETE', `/identities/${id}`)).status).toBe(204);
+    expect((await call('DELETE', `/identities/${id}`)).status).toBe(404);
+  });
+
+  test('days report bundles; the morning run builds them', async () => {
+    const projects = await json(await call('GET', '/projects'));
+    const sdk = projects.items.find((x: { slug: string }) => x.slug === 'sdk');
+    const before = await json(
+      await call('GET', `/projects/${sdk.id}/days?from=2026-01-01&to=2027-01-01`),
+    );
+    expect(before.items.length).toBeGreaterThan(0);
+    expect(before.items.every((d: { dirty: boolean }) => d.dirty)).toBe(true);
+
+    const run = await json(await call('POST', '/runs/morning'));
+    expect(run.bundles.built).toBeGreaterThan(0);
+    const after = await json(
+      await call('GET', `/projects/${sdk.id}/days?from=2026-01-01&to=2027-01-01`),
+    );
+    expect(
+      after.items.every((d: { dirty: boolean; bundleHash: string }) => !d.dirty && d.bundleHash),
+    ).toBe(true);
+
+    const date = after.items[0].date;
+    const day = await json(await call('GET', `/projects/${sdk.id}/days/${date}`));
+    expect(day.bundle).toMatchObject({ dirty: false, hash: after.items[0].bundleHash });
+    const rebuilt = await json(await call('POST', `/projects/${sdk.id}/days/${date}/rebuild`));
+    expect(rebuilt).toMatchObject({ date, changed: false });
   });
 });

@@ -1,10 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { ConnectorRegistry } from '@xjournal/connectors';
 import { newId } from '@xjournal/core';
 import { type DbHandle, schema } from '@xjournal/db';
 import { createTestDb } from '@xjournal/db/testing';
+import { memorySecrets } from '@xjournal/secrets';
+import { initLocal } from '@xjournal/services';
 import { eq, sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { createBoss } from '../src/jobs';
+import { createBoss, MORNING_QUEUE, startJobs } from '../src/jobs';
 
 // Spike 3 (docs/adr/0003): pg-boss and Drizzle on Bun.
 // Runs on PGlite by default; on Docker Postgres with HUB_TEST_DATABASE_URL set.
@@ -66,10 +69,10 @@ describe(`pg-boss on Bun (${target})`, () => {
   });
 
   test('cron schedules are stored in the database', async () => {
-    await boss.createQueue('morning-run');
-    await boss.schedule('morning-run', '0 7 * * 1-5', null, { tz: 'America/New_York' });
+    await boss.createQueue('cron-spike');
+    await boss.schedule('cron-spike', '0 7 * * 1-5', null, { tz: 'America/New_York' });
     const schedules = await boss.getSchedules();
-    expect(schedules.map((s) => s.name)).toContain('morning-run');
+    expect(schedules.map((s) => s.name)).toContain('cron-spike');
   });
 
   test('transactional enqueue with Drizzle: a rolled-back transaction leaves no job', async () => {
@@ -101,5 +104,22 @@ describe(`pg-boss on Bun (${target})`, () => {
 
     await attempt(true);
     expect(await boss.findJobs('tx-test')).toHaveLength(1);
+  });
+
+  test('startJobs: the morning run is scheduled, runs once per key, and builds bundles', async () => {
+    await initLocal(h.db, { name: 'Jo', timeZone: 'UTC' });
+    const logs: string[] = [];
+    const jobs = await startJobs(boss, {
+      db: h.db,
+      connectors: { registry: new ConnectorRegistry([]), secrets: memorySecrets() },
+      timeZone: 'UTC',
+      log: (_level, msg) => logs.push(msg),
+    });
+    expect((await boss.getSchedules()).map((x) => x.name)).toContain(MORNING_QUEUE);
+    const first = await jobs.enqueueMorningRun();
+    const second = await jobs.enqueueMorningRun();
+    expect(first).not.toBeNull();
+    expect(second).toBeNull();
+    await waitFor(() => logs.includes('morning run finished'));
   });
 });

@@ -481,6 +481,7 @@ export const github = defineConnector<GithubConfig>({
   }),
   parseConfig: (raw) => zGithubConfig.parse(raw),
   sourceKey: (config) => `github:${config.host}`,
+  configSchema: () => z.toJSONSchema(zGithubConfig, { io: 'input' }) as Record<string, unknown>,
   defaultIdentity: (config) => ({ accountKey: config.login, aliases: [] }),
   sync(input) {
     switch (input.stream) {

@@ -151,3 +151,33 @@ export async function deleteIdentity(tx: Tx, id: string): Promise<boolean> {
     .returning({ id: identities.id });
   return rows.length > 0;
 }
+
+/** Every connected account in every workspace (system: the morning run). */
+export async function allConnectedAccounts(tx: Tx) {
+  return tx
+    .select({
+      id: connectorAccounts.id,
+      workspaceId: connectorAccounts.workspaceId,
+      ownerUserId: connectorAccounts.ownerUserId,
+      source: connectorAccounts.source,
+      status: connectorAccounts.status,
+    })
+    .from(connectorAccounts)
+    .where(isNull(connectorAccounts.disconnectedAt))
+    .orderBy(asc(connectorAccounts.createdAt));
+}
+
+export async function detachProject(
+  tx: Tx,
+  connectorAccountId: string,
+  projectId: string,
+): Promise<void> {
+  await tx
+    .delete(projectSources)
+    .where(
+      and(
+        eq(projectSources.connectorAccountId, connectorAccountId),
+        eq(projectSources.projectId, projectId),
+      ),
+    );
+}

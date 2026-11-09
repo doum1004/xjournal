@@ -12,6 +12,8 @@ const Env = z.object({
   /** Local mode: the per-install token for the UI and HTTP MCP (spec §11.3). */
   HUB_LOCAL_TOKEN: z.string().min(24).optional(),
   BETTER_AUTH_SECRET: z.string().min(32).optional(),
+  /** Cron for the morning run, in the workspace time zone (default: 07:00 daily). */
+  HUB_MORNING_CRON: z.string().optional(),
 });
 
 export interface Config {
@@ -22,6 +24,7 @@ export interface Config {
   baseURL: string;
   localToken: string;
   authSecret: string;
+  morningCron?: string;
   /** True when a secret was generated because none was configured (local dev only). */
   generated: { localToken: boolean; authSecret: boolean };
 }
@@ -40,6 +43,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     baseURL: e.HUB_BASE_URL ?? `http://localhost:${e.HUB_PORT}`,
     localToken: e.HUB_LOCAL_TOKEN ?? random(),
     authSecret: e.BETTER_AUTH_SECRET ?? random(),
+    ...(e.HUB_MORNING_CRON ? { morningCron: e.HUB_MORNING_CRON } : {}),
     generated: { localToken: !e.HUB_LOCAL_TOKEN, authSecret: !e.BETTER_AUTH_SECRET },
   };
 }

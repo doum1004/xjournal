@@ -30,3 +30,14 @@ export function withAuthRole<T>(db: HubDb, fn: (tx: Tx) => Promise<T>): Promise<
     return fn(tx);
   });
 }
+
+/**
+ * Run `fn` in a transaction as the connection's own role (the migration role), which bypasses
+ * row-level security. Only for system jobs over derived data, such as building daily bundles,
+ * which cover every record of a project and date regardless of who may see them (schema.md
+ * §6). Never call it with input a user controls beyond IDs. See docs/adr/0005 for managed
+ * Postgres, where this role needs BYPASSRLS.
+ */
+export function withSystem<T>(db: HubDb, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(fn);
+}

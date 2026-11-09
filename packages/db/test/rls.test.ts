@@ -584,6 +584,72 @@ describe(`RLS on ${testTarget()}`, () => {
     });
   });
 
+  describe('daily bundles', () => {
+    /** A bundle for a project and date holding the given revisions (as superuser). */
+    async function seedBundle(
+      project: keyof Seed['p'],
+      revisionIds: string[],
+      date = '2026-11-09',
+    ) {
+      const id = newId();
+      await s.db.execute(sql`insert into daily_bundles (id, workspace_id, project_id, date, content_hash, coverage)
+        values (${id}, ${s.ws.W}, ${s.p[project]}, ${date}, 'h', '{}')`);
+      for (const rid of revisionIds) {
+        await s.db.execute(sql`insert into bundle_items (bundle_id, record_revision_id, workspace_id)
+          values (${id}, ${rid}, ${s.ws.W})`);
+      }
+      return id;
+    }
+
+    test('daily_bundles_select: members of the project; no writes for hub_app', async () => {
+      cover('daily_bundles_select');
+      const b = await seedBundle('Q', []);
+      const sees = (who: keyof Seed['u']) =>
+        s.as(who, (tx) => visible(tx, 'daily_bundles', `id = '${b}'`));
+      expect(await sees('eve')).toBe(1);
+      expect(await sees('bob')).toBe(1);
+      expect(await sees('carol')).toBe(0); // not in Q
+      await expect(
+        s.as('eve', (tx) =>
+          tx.execute(sql`update daily_bundles set content_hash = 'x' where id = ${b}`),
+        ),
+      ).rejects.toThrow(/permission denied/);
+    });
+
+    test('bundle_items_select: only revisions of records the caller can see', async () => {
+      cover('bundle_items_select');
+      const shared = await seedRecord(s, { owner: 'bob', project: 'Q', visibility: 'project' });
+      const priv = await seedRecord(s, { owner: 'bob', project: 'Q', visibility: 'private' });
+      const b = await seedBundle('Q', [shared.revisionId, priv.revisionId], '2026-11-08');
+      const count = (who: keyof Seed['u']) =>
+        s.as(who, (tx) => visible(tx, 'bundle_items', `bundle_id = '${b}'`));
+      expect(await count('bob')).toBe(2);
+      expect(await count('eve')).toBe(1); // bob's private record stays hidden
+      expect(await count('carol')).toBe(0);
+    });
+
+    test('changing a record marks the bundles of its old and new day dirty', async () => {
+      const r = await seedRecord(s, { owner: 'bob', project: 'P', visibility: 'project' });
+      const onP = await seedBundle('P', []);
+      const dirty = async (id: string) => {
+        const x = await s.db.execute<{ d: string | null }>(
+          sql`select dirty_since as d from daily_bundles where id = ${id}`,
+        );
+        return x.rows[0]?.d != null;
+      };
+      // seedRecord dates are 2026-11-08; move it to the bundle's day as the owner, under RLS.
+      await s.as('bob', (tx) =>
+        tx.execute(sql`update records set applicable_date = '2026-11-09' where id = ${r.recordId}`),
+      );
+      expect(await dirty(onP)).toBe(true);
+      await s.db.execute(sql`update daily_bundles set dirty_since = null where id = ${onP}`);
+      await s.as('bob', (tx) =>
+        tx.execute(sql`update records set applicable_date = '2026-11-10' where id = ${r.recordId}`),
+      );
+      expect(await dirty(onP)).toBe(true); // the old day lost a record
+    });
+  });
+
   describe('workspace isolation', () => {
     test('a user in another workspace context sees nothing of W', async () => {
       await seedRecord(s, {

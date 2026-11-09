@@ -70,6 +70,8 @@ export interface Connector<C = unknown> {
   /** The record `source` key for this account, e.g. 'github:github.com'. */
   sourceKey(config: C): string;
   sync(input: SyncInput<C>): Promise<SyncPage>;
+  /** JSON Schema of the config, so a UI can build its form. */
+  configSchema?(): Record<string, unknown>;
   /** The identity implied by the config (e.g. the GitHub login), mapped when connecting. */
   defaultIdentity?(config: C): { accountKey: string; aliases: string[] } | null;
 }

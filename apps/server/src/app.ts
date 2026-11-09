@@ -1,11 +1,15 @@
 import { requireMcpAuth } from '@better-auth/mcp';
 import { type HubAuth, redeemInvite } from '@xjournal/auth';
+import { builtinConnectors } from '@xjournal/connectors';
 import { type DbHandle, migrationStatus } from '@xjournal/db';
+import { memorySecrets } from '@xjournal/secrets';
+import type * as svc from '@xjournal/services';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { bearer, createApi, problem, sameToken } from './api';
 import type { Config } from './config';
+import type { Jobs } from './jobs';
 import { handleMcp } from './mcp';
 import { webHandler } from './web';
 
@@ -16,6 +20,9 @@ export interface AppDeps {
   auth?: HubAuth;
   /** The built web UI; defaults to apps/web/dist. */
   webDist?: string;
+  /** Connector registry and secret store. Tests default to an in-memory store. */
+  connectors?: svc.ConnectorDeps;
+  jobs?: Jobs;
 }
 
 export function createApp(deps: AppDeps) {
@@ -66,7 +73,14 @@ export function createApp(deps: AppDeps) {
   }
 
   // REST API (api.md §3), after the auth routes so /api/v1/auth/* is matched first.
-  app.route('/api/v1', createApi({ config, db }));
+  const connectors = deps.connectors ?? {
+    registry: builtinConnectors(),
+    secrets: memorySecrets(),
+  };
+  app.route(
+    '/api/v1',
+    createApi({ config, db, connectors, ...(deps.jobs ? { jobs: deps.jobs } : {}) }),
+  );
 
   // MCP (api.md §5). Local mode: the per-install token. Hosted: OAuth 2.1 access tokens.
   const oauthMcp = auth

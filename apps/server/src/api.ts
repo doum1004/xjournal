@@ -3,6 +3,7 @@ import type { DbHandle, LocalOwner } from '@xjournal/db';
 import * as svc from '@xjournal/services';
 import { type Context, Hono } from 'hono';
 import type { Config } from './config';
+import type { Jobs } from './jobs';
 
 // REST adapter over the service layer (api.md §1, §3). Routes only parse HTTP and call one
 // service operation each; all rules and authorization live in packages/services.
@@ -38,8 +39,16 @@ async function body(c: Context): Promise<unknown> {
   });
 }
 
-export function createApi(deps: { config: Pick<Config, 'mode' | 'localToken'>; db: DbHandle }) {
-  const { config, db } = deps;
+export interface ApiDeps {
+  config: Pick<Config, 'mode' | 'localToken'>;
+  db: DbHandle;
+  connectors: svc.ConnectorDeps;
+  /** The job queue; without it, syncs and runs happen inside the request. */
+  jobs?: Jobs;
+}
+
+export function createApi(deps: ApiDeps) {
+  const { config, db, connectors, jobs } = deps;
   const api = new Hono<Env>();
 
   // The local owner never changes once `hub init` has run, so it's looked up once.
@@ -106,6 +115,84 @@ export function createApi(deps: { config: Pick<Config, 'mode' | 'localToken'>; d
   api.post('/records/:id/route', async (c) =>
     c.json(await svc.routeRecord(c.get('ctx'), c.req.param('id'), await body(c))),
   );
+
+  // Settings (api.md §3.2, §3.2a).
+  api.get('/workspace', async (c) => c.json(await svc.getWorkspace(c.get('ctx'))));
+  api.patch('/workspace', async (c) =>
+    c.json(await svc.updateWorkspace(c.get('ctx'), await body(c))),
+  );
+  api.patch('/projects/:p', async (c) =>
+    c.json(await svc.updateProject(c.get('ctx'), c.req.param('p'), await body(c))),
+  );
+  api.post('/projects/:p/archive', async (c) => {
+    await svc.archiveProject(c.get('ctx'), c.req.param('p'));
+    return c.body(null, 204);
+  });
+  api.post('/projects/:p/days/:date/rebuild', async (c) =>
+    c.json(await svc.rebuildDay(c.get('ctx'), c.req.param('p'), c.req.param('date'))),
+  );
+
+  api.get('/connector-kinds', (c) =>
+    c.json({
+      items: connectors.registry.list().map((d) => ({
+        ...d,
+        configSchema: connectors.registry.get(d.kind)?.configSchema?.() ?? null,
+      })),
+    }),
+  );
+  api.get('/connectors', async (c) => c.json({ items: await svc.listConnectors(c.get('ctx')) }));
+  api.post('/connectors', async (c) =>
+    c.json(await svc.addConnector(c.get('ctx'), connectors, await body(c)), 201),
+  );
+  api.patch('/connectors/:id', async (c) =>
+    c.json(await svc.updateConnector(c.get('ctx'), connectors, c.req.param('id'), await body(c))),
+  );
+  api.put('/connectors/:id/secret', async (c) => {
+    await svc.replaceConnectorSecret(c.get('ctx'), connectors, c.req.param('id'), await body(c));
+    return c.body(null, 204);
+  });
+  api.delete('/connectors/:id', async (c) => {
+    await svc.removeConnector(c.get('ctx'), connectors, c.req.param('id'));
+    return c.body(null, 204);
+  });
+  api.post('/connectors/:id/sync', async (c) => {
+    const ctx = c.get('ctx');
+    const id = c.req.param('id');
+    const raw = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const opts = {
+      ...(typeof raw.backfillFrom === 'string' ? { backfillFrom: raw.backfillFrom } : {}),
+      ...(Array.isArray(raw.streams) ? { streams: raw.streams.map(String) } : {}),
+    };
+    if (!jobs) {
+      const r = await svc.syncConnector(ctx, connectors, id, opts);
+      await svc.rebuildBundles(ctx.db);
+      return c.json(r);
+    }
+    // Check access now, so a bad ID fails here rather than in the worker.
+    if (!(await svc.listConnectors(ctx)).some((a) => a.id === id)) {
+      throw new svc.ServiceError(404, 'not_found', 'Connector not found');
+    }
+    const jobId = await jobs.enqueueSync({ connectorAccountId: id, ...ctx.actor, ...opts });
+    return c.json({ queued: jobId != null, alreadyRunning: jobId == null }, 202);
+  });
+
+  api.get('/identities', async (c) =>
+    c.json({ items: await svc.listIdentities(c.get('ctx'), c.req.query('source')) }),
+  );
+  api.post('/identities', async (c) =>
+    c.json(await svc.addIdentity(c.get('ctx'), await body(c)), 201),
+  );
+  api.delete('/identities/:id', async (c) => {
+    await svc.removeIdentity(c.get('ctx'), c.req.param('id'));
+    return c.body(null, 204);
+  });
+
+  // The morning run (spec §5.1): sync everything, rebuild bundles.
+  api.post('/runs/morning', async (c) => {
+    if (!jobs) return c.json(await svc.morningRun(c.get('ctx').db, connectors));
+    const jobId = await jobs.enqueueMorningRun();
+    return c.json({ queued: jobId != null, alreadyRunning: jobId == null }, 202);
+  });
 
   api.all('*', () => problem(404, 'not_found', 'No such route'));
   return api;

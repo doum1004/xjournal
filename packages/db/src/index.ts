@@ -1,4 +1,4 @@
-export { type Actor, type Tx, withActor, withAuthRole } from './actor';
+export { type Actor, type Tx, withActor, withAuthRole, withSystem } from './actor';
 export {
   connectPglite,
   connectPostgres,
@@ -9,6 +9,8 @@ export {
 } from './client';
 export { type MigrationStatus, migrate, migrationStatus } from './migrate';
 export * as authRepo from './repos/auth';
+export type { BundleRow } from './repos/bundles';
+export * as bundleRepo from './repos/bundles';
 export type { ConnectorAccountRow, IdentityRow, SyncStateRow } from './repos/connectors';
 export * as connectorRepo from './repos/connectors';
 export type { LocalOwner } from './repos/local';

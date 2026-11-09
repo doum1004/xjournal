@@ -105,3 +105,52 @@ export async function displayNames(tx: Tx, ids: string[]): Promise<Map<string, s
     .where(sql`${users.id} in ${ids}`);
   return new Map(rows.map((r) => [r.id, r.name]));
 }
+
+/** The caller's workspace with its settings (RLS: owner or member). */
+export async function getWorkspaceSettings(tx: Tx) {
+  const rows = await tx
+    .select({
+      id: workspaces.id,
+      name: workspaces.name,
+      domain: workspaces.domain,
+      timeZone: workspaces.timeZone,
+      weekStart: workspaces.weekStart,
+      ownerUserId: workspaces.ownerUserId,
+    })
+    .from(workspaces)
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Update the caller's workspace; returns false when RLS let nothing through (not the owner). */
+export async function updateWorkspace(
+  tx: Tx,
+  id: string,
+  patch: { name?: string; timeZone?: string; weekStart?: number },
+): Promise<boolean> {
+  const rows = await tx
+    .update(workspaces)
+    .set(patch)
+    .where(eq(workspaces.id, id))
+    .returning({ id: workspaces.id });
+  return rows.length > 0;
+}
+
+/** Update a project; returns false when RLS let nothing through (below manager). */
+export async function updateProject(
+  tx: Tx,
+  id: string,
+  patch: {
+    name?: string;
+    timeZone?: string | null;
+    defaultNoteVisibility?: Visibility;
+    archivedAt?: Date | null;
+  },
+): Promise<boolean> {
+  const rows = await tx
+    .update(projects)
+    .set(patch)
+    .where(eq(projects.id, id))
+    .returning({ id: projects.id });
+  return rows.length > 0;
+}

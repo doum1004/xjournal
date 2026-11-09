@@ -1,4 +1,5 @@
 export * from './auth-library';
+export * from './bundles';
 export * from './enums';
 export * from './identity';
 export * from './records';

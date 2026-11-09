@@ -119,6 +119,22 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Pending devices | `GET /projects/{p}/devices?status=pending` | manager | |
 | Approve or reject a device | `POST /devices/{passkeyId}/approve`, `POST /devices/{passkeyId}/reject` | manager | |
 
+### 3.2a Workspace, connectors, identities (owner user only)
+
+Connectors and identities belong to the user who connected them and are never shared (spec §9.2). Credentials are write-only: they're accepted on create or replace and never returned (`hasSecret` says one is stored).
+
+| Operation | REST | Min. role | MCP |
+|---|---|---|---|
+| Workspace settings | `GET /workspace`, `PATCH /workspace` `{name?, timeZone?, weekStart?}` | workspace owner | |
+| Connector kinds | `GET /connector-kinds` → `[{kind, displayName, authTypes, streams, policy, configSchema}]` | signed in | |
+| List connectors | `GET /connectors` → `ConnectorView[]` (status, projects, per-stream last sync, error, history floor) | owner user | (in `get_status`) |
+| Connect | `POST /connectors` `{kind, displayName?, config, secret?, projectIds, defaultVisibility?, backfillFrom?}` → `ConnectorView` | owner user; contributor in each project | |
+| Update | `PATCH /connectors/{id}` `{displayName?, config?, projectIds?}` | owner user | |
+| Replace the credential | `PUT /connectors/{id}/secret` `{secret}` → 204 | owner user | |
+| Sync now | `POST /connectors/{id}/sync` `{streams?, backfillFrom?}` → `SyncResult` (local mode) or 202 + job (hosted) | owner user | |
+| Disconnect | `DELETE /connectors/{id}` → 204 (deletes the credential; records stay) | owner user | |
+| Identities | `GET /identities?source=`, `POST /identities` `{source, accountKey, aliases?}`, `DELETE /identities/{id}` | owner user | |
+
 ### 3.3 Notes, records, Inbox, search
 
 | Operation | REST | Min. role | MCP |
