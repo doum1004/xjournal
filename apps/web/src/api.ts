@@ -1,0 +1,113 @@
+import type {
+  DaySummary,
+  DayView,
+  Page,
+  ProjectView,
+  RecordView,
+  RevisionView,
+} from '@xjournal/core';
+
+// A thin client for /api/v1 (docs/api.md). Local mode authenticates with the per-install
+// token (spec §11.3), kept in this browser's localStorage.
+
+const TOKEN_KEY = 'xjournal.token';
+
+export const tokenStore = {
+  get: (): string | null => {
+    try {
+      return localStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  },
+  set: (t: string) => {
+    try {
+      localStorage.setItem(TOKEN_KEY, t);
+    } catch {
+      // Private mode: the token lasts until the tab closes.
+    }
+  },
+  clear: () => {
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+    } catch {}
+  },
+};
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const token = tokenStore.get();
+  const res = await fetch(`/api/v1${path}`, {
+    method,
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+      'x-hub-client': 'web',
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!res.ok) {
+    const p = (await res.json().catch(() => ({}))) as {
+      code?: string;
+      title?: string;
+      errors?: { path: string; message: string }[];
+    };
+    const detail = p.errors?.map((e) => `${e.path}: ${e.message}`).join('; ');
+    throw new ApiError(
+      res.status,
+      p.code ?? 'internal',
+      detail ? `${p.title}: ${detail}` : (p.title ?? res.statusText),
+    );
+  }
+  return (await res.json()) as T;
+}
+
+const qs = (params: Record<string, string | number | undefined | null>) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v != null && v !== '') q.set(k, String(v));
+  const s = q.toString();
+  return s ? `?${s}` : '';
+};
+
+export interface Me {
+  user: { id: string; name: string };
+  projects: ProjectView[];
+}
+
+export interface RouteBody {
+  projectId?: string | null;
+  date?: string;
+  kind?: string;
+  visibility?: string;
+  tags?: string[];
+}
+
+export const api = {
+  me: () => request<Me>('GET', '/me'),
+  days: (projectId: string, from: string, to: string) =>
+    request<{ items: DaySummary[] }>('GET', `/projects/${projectId}/days${qs({ from, to })}`),
+  day: (projectId: string, date: string) =>
+    request<DayView>('GET', `/projects/${projectId}/days/${date}`),
+  record: (id: string) => request<RecordView>('GET', `/records/${id}`),
+  revisions: (id: string) => request<{ items: RevisionView[] }>('GET', `/records/${id}/revisions`),
+  inbox: (cursor?: string) =>
+    request<Page<RecordView>>('GET', `/inbox${qs({ limit: 50, cursor })}`),
+  search: (p: { q: string; projectId?: string; from?: string; to?: string; cursor?: string }) =>
+    request<Page<RecordView & { score: number }>>('GET', `/search${qs({ ...p, limit: 50 })}`),
+  addNote: (text: string, projectId?: string) =>
+    request<{ note: RecordView; routed: boolean }>('POST', '/notes', {
+      text,
+      ...(projectId ? { projectId } : {}),
+    }),
+  editNote: (id: string, text: string) => request<RecordView>('PATCH', `/notes/${id}`, { text }),
+  route: (id: string, body: RouteBody) => request<RecordView>('POST', `/records/${id}/route`, body),
+};

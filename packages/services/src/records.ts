@@ -33,7 +33,7 @@ function checkVisibility(v: Visibility | undefined) {
 // Views
 // ------------------------------------------------------------------------------------------
 
-async function toViews(tx: Tx, ctx: Ctx, rows: RecordRow[]): Promise<RecordView[]> {
+export async function toViews(tx: Tx, ctx: Ctx, rows: RecordRow[]): Promise<RecordView[]> {
   const ids = rows.map((r) => r.id);
   // Sequential on purpose: one transaction is one connection, which runs one query at a time
   // (node-postgres warns about overlapping queries, and pg@9 rejects them).

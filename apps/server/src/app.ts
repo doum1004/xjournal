@@ -7,12 +7,15 @@ import { z } from 'zod';
 import { bearer, createApi, problem, sameToken } from './api';
 import type { Config } from './config';
 import { handleMcp } from './mcp';
+import { webHandler } from './web';
 
 export interface AppDeps {
   config: Pick<Config, 'mode' | 'localToken' | 'authSecret' | 'baseURL'>;
   /** The service-layer database (hub_app via withActor). */
   db: DbHandle;
   auth?: HubAuth;
+  /** The built web UI; defaults to apps/web/dist. */
+  webDist?: string;
 }
 
 export function createApp(deps: AppDeps) {
@@ -91,6 +94,16 @@ export function createApp(deps: AppDeps) {
     }
     if (!oauthMcp) return problem(503, 'unavailable', 'Authentication is not configured');
     return oauthMcp(req);
+  });
+
+  // The web UI, last, so it never shadows the API. No build yet: a hint instead of a blank page.
+  const web = webHandler(deps.webDist);
+  app.get('*', async (c) => {
+    const res = await web(new URL(c.req.url).pathname);
+    return (
+      res ??
+      c.text('The web UI is not built yet. Run `bun run web:build`, or `bun run web:dev`.', 404)
+    );
   });
 
   return app;

@@ -87,6 +87,13 @@ export function createApi(deps: { config: Pick<Config, 'mode' | 'localToken'>; d
     c.json(await svc.editNote(c.get('ctx'), c.req.param('id'), await body(c))),
   );
 
+  api.get('/projects/:p/days', async (c) =>
+    c.json({ items: await svc.listDays(c.get('ctx'), c.req.param('p'), c.req.query()) }),
+  );
+  api.get('/projects/:p/days/:date', async (c) =>
+    c.json(await svc.getDay(c.get('ctx'), c.req.param('p'), c.req.param('date'))),
+  );
+
   api.get('/inbox', async (c) => c.json(await svc.listInbox(c.get('ctx'), c.req.query())));
   api.get('/search', async (c) => c.json(await svc.search(c.get('ctx'), c.req.query())));
 

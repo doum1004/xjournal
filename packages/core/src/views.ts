@@ -55,3 +55,25 @@ export interface Page<T> {
   items: T[];
   nextCursor: string | null;
 }
+
+/** One entry of `GET /projects/{p}/days`. Bundles, reports and coverage arrive in M2–M3. */
+export interface DaySummary {
+  date: string;
+  recordCount: number;
+  mineCount: number;
+  bundleHash: string | null;
+  dirty: boolean;
+  daily: null;
+  coverage: Record<string, never>;
+}
+
+/** `GET /projects/{p}/days/{date}`. Work items arrive in Phase 2, so every record is unlinked. */
+export interface DayView {
+  date: string;
+  projectId: string;
+  bundle: null;
+  workItems: { id: string; title: string; records: RecordView[] }[];
+  unlinked: RecordView[];
+  daily: null;
+  coverage: Record<string, never>;
+}

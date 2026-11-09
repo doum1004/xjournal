@@ -257,3 +257,47 @@ export async function findBySourceKeys(
   }
   return out;
 }
+
+/** Record counts per applicable date in a project (api.md §3.4), visible ones only. */
+export async function dayCounts(
+  tx: Tx,
+  opts: { projectId: string; userId: string; from: string; to: string },
+): Promise<{ date: string; recordCount: number; mineCount: number }[]> {
+  const rows = await tx
+    .select({
+      date: records.applicableDate,
+      recordCount: sql<number>`count(*)::int`,
+      mineCount: sql<number>`(count(*) filter (where ${records.isMine} and ${records.ownerUserId} = ${opts.userId}))::int`,
+    })
+    .from(records)
+    .where(
+      and(
+        eq(records.projectId, opts.projectId),
+        gte(records.applicableDate, opts.from),
+        lt(records.applicableDate, opts.to),
+        isNull(records.hiddenAt),
+      ),
+    )
+    .groupBy(records.applicableDate)
+    .orderBy(records.applicableDate);
+  return rows.map((r) => ({
+    ...r,
+    recordCount: Number(r.recordCount),
+    mineCount: Number(r.mineCount),
+  }));
+}
+
+/** A day's records in a project, in event order. */
+export async function recordsOnDay(tx: Tx, projectId: string, date: string): Promise<RecordRow[]> {
+  return tx
+    .select()
+    .from(records)
+    .where(
+      and(
+        eq(records.projectId, projectId),
+        eq(records.applicableDate, date),
+        isNull(records.hiddenAt),
+      ),
+    )
+    .orderBy(records.eventTime, records.id);
+}

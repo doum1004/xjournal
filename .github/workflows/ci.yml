@@ -18,6 +18,7 @@ jobs:
       - run: bun run typecheck
       - run: bun run lint
       - run: bun test
+      - run: bun run web:build
 
   postgres:
     # Parity (docs/adr/0004): the same suites against a real Postgres 17.

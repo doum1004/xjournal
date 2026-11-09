@@ -90,6 +90,42 @@ describe('REST API, local mode', () => {
     expect(record).toMatchObject({ id: n2.note.id, revisionNo: 2, routingStatus: 'confirmed' });
   });
 
+  test('days: counts per date for the heatmap, and one day’s records', async () => {
+    const project = (await json(await call('GET', '/projects'))).items[0];
+    await call('POST', '/notes', { text: 'Older day #sdk @2026-01-05' });
+    await call('POST', '/notes', { text: 'Same older day #sdk @2026-01-05 !meeting' });
+
+    const days = await json(
+      await call('GET', `/projects/${project.id}/days?from=2026-01-01&to=2026-02-01`),
+    );
+    expect(days.items).toEqual([
+      {
+        date: '2026-01-05',
+        recordCount: 2,
+        mineCount: 2,
+        bundleHash: null,
+        dirty: false,
+        daily: null,
+        coverage: {},
+      },
+    ]);
+
+    const day = await json(await call('GET', `/projects/${project.id}/days/2026-01-05`));
+    expect(day).toMatchObject({ date: '2026-01-05', workItems: [], daily: null });
+    expect(day.unlinked.map((r: { title: string }) => r.title)).toEqual([
+      'Older day',
+      'Same older day',
+    ]);
+
+    expect(
+      (await call('GET', `/projects/${project.id}/days?from=2026-02-01&to=2026-01-01`)).status,
+    ).toBe(400);
+    expect((await call('GET', `/projects/${project.id}/days/2026-02-30`)).status).toBe(400);
+    expect((await call('GET', '/projects/01ARZ3NDEKTSV4RRFFQ69G5FAV/days/2026-01-05')).status).toBe(
+      404,
+    );
+  });
+
   test('errors are problem+json with stable codes', async () => {
     const bad = await call('POST', '/notes', { text: '' });
     expect(bad.status).toBe(400);

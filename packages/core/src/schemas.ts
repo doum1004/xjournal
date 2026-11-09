@@ -88,3 +88,9 @@ export const zPageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.string().optional(),
 });
+
+/** `GET /projects/{p}/days` (api.md §3.4): `from` inclusive, `to` exclusive, at most ~2 years. */
+export const zDayRange = z
+  .object({ from: zIsoDate, to: zIsoDate })
+  .refine((r) => r.from < r.to, 'from must be before to')
+  .refine((r) => Date.parse(r.to) - Date.parse(r.from) <= 800 * 86_400_000, 'range too long');
