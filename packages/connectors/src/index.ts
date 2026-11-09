@@ -1,2 +1,7 @@
-// Placeholder: this package is built in a later milestone (docs/plan.md §2).
-export {};
+export {
+  parseDailyLog,
+  parseFrontMatter,
+  scanWorklog,
+  type WorklogRecord,
+  type WorklogScan,
+} from './worklog';

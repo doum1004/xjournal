@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@xjournal/connectors": "workspace:*",
     "@xjournal/core": "workspace:*",
     "@xjournal/db": "workspace:*",
     "@xjournal/services": "workspace:*"

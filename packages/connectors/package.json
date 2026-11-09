@@ -6,5 +6,8 @@
   "description": "Connector SDK and built-in connectors",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@xjournal/core": "workspace:*"
   }
 }

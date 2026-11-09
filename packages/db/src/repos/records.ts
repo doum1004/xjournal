@@ -110,6 +110,7 @@ export type RecordPatch = Partial<
   Pick<
     RecordRow,
     | 'title'
+    | 'url'
     | 'summary'
     | 'projectId'
     | 'applicableDate'
@@ -237,4 +238,22 @@ export async function searchRecords(
     .limit(opts.limit)
     .offset(opts.offset);
   return rows.map((r) => ({ row: r.row, score: Number(r.score) }));
+}
+
+/** Existing records for `(source, external_id)` keys in the caller's workspace (schema.md §1). */
+export async function findBySourceKeys(
+  tx: Tx,
+  source: string,
+  externalIds: string[],
+): Promise<Map<string, RecordRow>> {
+  const out = new Map<string, RecordRow>();
+  for (let i = 0; i < externalIds.length; i += 500) {
+    const chunk = externalIds.slice(i, i + 500);
+    const rows = await tx
+      .select()
+      .from(records)
+      .where(and(eq(records.source, source), inArray(records.externalId, chunk)));
+    for (const r of rows) out.set(r.externalId, r);
+  }
+  return out;
 }

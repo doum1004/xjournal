@@ -29,6 +29,8 @@ bun run hub inbox
 bun run hub route <id> --project sdk               # or --date, --kind, --visibility, --project inbox
 bun run hub search release --from 2026-11-01
 bun run hub show <id>                              # a record and its revisions
+bun run hub import worklog --project work --dry-run   # the prototype's ~/worklog daily logs
+bun run hub import worklog --project work             # safe to repeat: unchanged days are skipped
 ```
 
 Inline hints in a note: `#project`, `@today` / `@yesterday` / `@YYYY-MM-DD`, `!event` / `!context` / `!guidance` / `!reminder`, and any other `!tag`. The raw text is stored as written; edits and re-routing add revisions (spec §3.6).

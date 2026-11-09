@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { scanWorklog } from '@xjournal/connectors';
 import type { RecordView } from '@xjournal/core';
 import { connectPostgres, type DbHandle, migrate, migrationStatus } from '@xjournal/db';
 import * as svc from '@xjournal/services';
@@ -25,6 +28,12 @@ Notes and records:
   route <id> [--project SLUG|inbox] [--date D] [--kind K] [--visibility V]
   show <id>                          A record and its revisions
   search <query…> [--project SLUG] [--from D] [--to D] [--limit N]
+
+Import:
+  import worklog [DIR] --project SLUG|inbox [--dry-run]
+                                     The prototype's daily logs (default DIR: ~/worklog).
+                                     Safe to repeat: unchanged days are skipped, changed
+                                     days get a new revision.
 
 Environment:
   DATABASE_URL                       Postgres connection string`;
@@ -185,6 +194,61 @@ const commands: Record<string, Handler> = {
       );
     }
     return 0;
+  },
+
+  async import(h, args) {
+    const { values, positionals } = parseArgs({
+      args,
+      allowPositionals: true,
+      options: { project: { type: 'string' }, 'dry-run': { type: 'boolean' } },
+    });
+    const [what, dirArg] = positionals;
+    if (what !== 'worklog' || !values.project) {
+      console.error('Usage: hub import worklog [DIR] --project SLUG|inbox [--dry-run]');
+      return 1;
+    }
+    const dir = dirArg ?? join(homedir(), 'worklog');
+    const c = await ctx(h);
+    const projectId = values.project === 'inbox' ? null : await projectIdFor(c, values.project);
+    const project = (await svc.listProjects(c)).find((p) => p.id === projectId);
+    const owner = await svc.localOwner(h.db);
+    const scan = scanWorklog(dir, project?.timeZone ?? owner.timeZone);
+
+    const dates = scan.daily.map((d) => d.input.externalId).sort();
+    console.log(
+      `${dir}: ${scan.daily.length} daily logs${dates.length ? ` (${dates[0]} … ${dates.at(-1)})` : ''}, ` +
+        `${scan.reviews.length} reviews, ${scan.skipped.length} skipped`,
+    );
+    for (const s of scan.skipped) console.log(`  skipped ${s.file}: ${s.reason}`);
+    if (scan.reviews.length) {
+      console.log('  reviews become report versions once reports exist (M3); not imported now');
+    }
+    if (values['dry-run']) return 0;
+
+    const total = { created: 0, updated: 0, unchanged: 0, rejected: 0 };
+    const bySource = new Map<string, typeof scan.daily>();
+    for (const d of scan.daily) bySource.set(d.source, [...(bySource.get(d.source) ?? []), d]);
+    for (const [source, items] of bySource) {
+      for (let i = 0; i < items.length; i += 100) {
+        const r = await svc.ingestRecords(c, {
+          source,
+          tier: 'file_import',
+          projectId,
+          records: items.slice(i, i + 100).map((d) => d.input),
+        });
+        total.created += r.created;
+        total.updated += r.updated;
+        total.unchanged += r.unchanged;
+        total.rejected += r.rejected.length;
+        for (const x of r.rejected) console.log(`  rejected ${x.externalId}: ${x.message}`);
+      }
+    }
+    const where = project ? `#${project.slug}` : 'the Inbox';
+    console.log(
+      `Imported into ${where}: ${total.created} created, ${total.updated} updated, ` +
+        `${total.unchanged} unchanged, ${total.rejected} rejected.`,
+    );
+    return total.rejected ? 1 : 0;
   },
 
   async search(h, args) {

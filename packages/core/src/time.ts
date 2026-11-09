@@ -49,3 +49,29 @@ export function isIsoDate(value: string): boolean {
 export function systemTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
+
+/** The offset of `timeZone` from UTC at `instant`, in milliseconds (positive east of UTC). */
+function zoneOffsetMs(instant: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(instant));
+  const n = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  const asUtc = Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second'));
+  return asUtc - Math.floor(instant / 1000) * 1000;
+}
+
+/** The instant a calendar day starts in `timeZone` (handles DST changes). */
+export function startOfDay(date: string, timeZone: string): Date {
+  const guess = Date.parse(`${date}T00:00:00Z`);
+  let t = guess - zoneOffsetMs(guess, timeZone);
+  // A second pass corrects the guess when the offset differs at the real instant (DST).
+  t = guess - zoneOffsetMs(t, timeZone);
+  return new Date(t);
+}

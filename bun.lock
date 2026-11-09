@@ -17,6 +17,7 @@
         "hub": "./src/main.ts",
       },
       "dependencies": {
+        "@xjournal/connectors": "workspace:*",
         "@xjournal/core": "workspace:*",
         "@xjournal/db": "workspace:*",
         "@xjournal/services": "workspace:*",
@@ -67,6 +68,9 @@
     "packages/connectors": {
       "name": "@xjournal/connectors",
       "version": "0.0.0",
+      "dependencies": {
+        "@xjournal/core": "workspace:*",
+      },
     },
     "packages/core": {
       "name": "@xjournal/core",
