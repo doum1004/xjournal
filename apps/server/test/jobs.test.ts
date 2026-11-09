@@ -112,6 +112,7 @@ describe(`pg-boss on Bun (${target})`, () => {
     const jobs = await startJobs(boss, {
       db: h.db,
       connectors: { registry: new ConnectorRegistry([]), secrets: memorySecrets() },
+      generate: { secrets: memorySecrets() },
       timeZone: 'UTC',
       log: (_level, msg) => logs.push(msg),
     });

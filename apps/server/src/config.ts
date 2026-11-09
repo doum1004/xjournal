@@ -14,6 +14,8 @@ const Env = z.object({
   BETTER_AUTH_SECRET: z.string().min(32).optional(),
   /** Cron for the morning run, in the workspace time zone (default: 07:00 daily). */
   HUB_MORNING_CRON: z.string().optional(),
+  /** The model for direct report generation (default: claude-opus-5-5). */
+  HUB_MODEL: z.string().optional(),
 });
 
 export interface Config {
@@ -25,6 +27,7 @@ export interface Config {
   localToken: string;
   authSecret: string;
   morningCron?: string;
+  model?: string;
   /** True when a secret was generated because none was configured (local dev only). */
   generated: { localToken: boolean; authSecret: boolean };
 }
@@ -44,6 +47,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     localToken: e.HUB_LOCAL_TOKEN ?? random(),
     authSecret: e.BETTER_AUTH_SECRET ?? random(),
     ...(e.HUB_MORNING_CRON ? { morningCron: e.HUB_MORNING_CRON } : {}),
+    ...(e.HUB_MODEL ? { model: e.HUB_MODEL } : {}),
     generated: { localToken: !e.HUB_LOCAL_TOKEN, authSecret: !e.BETTER_AUTH_SECRET },
   };
 }

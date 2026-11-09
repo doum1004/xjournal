@@ -287,3 +287,49 @@ describe('REST API: project rules', () => {
     expect((await json(await call('POST', '/rules/apply'))).routed).toBe(0);
   });
 });
+
+describe('REST API: direct generation and export', () => {
+  test('the key is write-only; generating without one is refused; export is Markdown', async () => {
+    expect(await json(await call('GET', '/ai'))).toEqual({
+      hasKey: false,
+      model: 'claude-opus-5-5',
+    });
+    expect((await call('PUT', '/ai/key', { key: 'short' })).status).toBe(400);
+
+    const projects = await json(await call('GET', '/projects'));
+    const sdk = projects.items.find((x: { slug: string }) => x.slug === 'sdk');
+    const r = await json(
+      await call('POST', `/projects/${sdk.id}/reports/resolve`, {
+        kind: 'daily',
+        date: '2026-01-05',
+      }),
+    );
+    const refused = await call('POST', `/reports/${r.reportId}/generate`, {});
+    expect(refused.status).toBe(409);
+    expect(await json(refused)).toMatchObject({ reason: 'direct_generation_disabled' });
+
+    expect((await call('PUT', '/ai/key', { key: 'sk-ant-api-key-for-tests-only' })).status).toBe(
+      204,
+    );
+    const ai = await json(await call('GET', '/ai'));
+    expect(ai).toEqual({ hasKey: true, model: 'claude-opus-5-5' });
+    expect(JSON.stringify(ai)).not.toContain('sk-ant');
+    expect((await call('DELETE', '/ai/key')).status).toBe(204);
+
+    // Export a hand-saved version.
+    const inputs = await json(await call('GET', `/reports/${r.reportId}/inputs`));
+    const rec = inputs.bundles[0].unlinked[0];
+    const saved = await json(
+      await call('POST', `/reports/${r.reportId}/versions`, {
+        bodyMd: `- ${rec.title} [[r:${rec.revisionId}]]`,
+        inputHash: inputs.inputHash,
+      }),
+    );
+    const exp = await call('GET', `/report-versions/${saved.versionId}/export`);
+    expect(exp.headers.get('content-type')).toContain('text/markdown');
+    expect(exp.headers.get('content-disposition')).toContain('sdk-daily-2026-01-05-v1.md');
+    const text = await exp.text();
+    expect(text).toContain('kind: daily');
+    expect(text).toContain('[^1]');
+  });
+});

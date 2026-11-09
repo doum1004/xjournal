@@ -22,6 +22,7 @@ export interface AppDeps {
   webDist?: string;
   /** Connector registry and secret store. Tests default to an in-memory store. */
   connectors?: svc.ConnectorDeps;
+  generate?: svc.GenerateDeps;
   jobs?: Jobs;
 }
 
@@ -80,7 +81,13 @@ export function createApp(deps: AppDeps) {
   // REST API (api.md §3), after the auth routes so /api/v1/auth/* is matched first.
   app.route(
     '/api/v1',
-    createApi({ config, db, connectors, ...(deps.jobs ? { jobs: deps.jobs } : {}) }),
+    createApi({
+      config,
+      db,
+      connectors,
+      ...(deps.generate ? { generate: deps.generate } : {}),
+      ...(deps.jobs ? { jobs: deps.jobs } : {}),
+    }),
   );
 
   // MCP (api.md §5). Local mode: the per-install token. Hosted: OAuth 2.1 access tokens.

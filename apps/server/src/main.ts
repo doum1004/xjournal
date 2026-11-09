@@ -25,6 +25,12 @@ const connectors: svc.ConnectorDeps = {
   log: { info: (msg, data) => log('info', msg, data), warn: (msg, data) => log('warn', msg, data) },
 };
 
+// Direct report generation: the Claude API key lives in the same OS keychain.
+const generate: svc.GenerateDeps = {
+  secrets: connectors.secrets,
+  ...(config.model ? { model: config.model } : {}),
+};
+
 // The job queue: the scheduled morning run and "sync now" (spec §5.1, docs/adr/0003).
 const boss = createBoss(db, config.databaseUrl);
 boss.on('error', (e) => log('error', 'job queue error', { error: String(e) }));
@@ -36,6 +42,7 @@ try {
   jobs = await startJobs(boss, {
     db: db.db,
     connectors,
+    generate,
     timeZone: ws.timeZone,
     ...(config.morningCron ? { cron: config.morningCron } : {}),
     log,
@@ -49,7 +56,7 @@ try {
   log('warn', 'job queue not started', { error: String(e) });
 }
 
-const app = createApp({ config, db, auth, connectors, ...(jobs ? { jobs } : {}) });
+const app = createApp({ config, db, auth, connectors, generate, ...(jobs ? { jobs } : {}) });
 
 // Generous idle timeout: without the queue, "sync now" runs inside the request.
 const server = Bun.serve({

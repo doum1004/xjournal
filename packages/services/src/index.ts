@@ -23,6 +23,18 @@ export {
 export { asCaller, type Ctx } from './context';
 export { getDay, listDays } from './days';
 export { type ErrorCode, parse, ServiceError } from './errors';
+export {
+  ANTHROPIC_KEY_REF,
+  aiStatus,
+  dueReportIds,
+  type GenerateDeps,
+  type GenerateOptions,
+  generateReport,
+  type RefreshResult,
+  refreshReports,
+  removeApiKey,
+  setApiKey,
+} from './generate';
 export { type IngestRequest, type IngestResult, ingestRecords } from './ingest';
 export { actorForUser, type InitOptions, initLocal, localOwner } from './local';
 export { type MorningRunOptions, type MorningRunResult, morningRun } from './morning';
@@ -46,6 +58,7 @@ export {
 export {
   addGuidance,
   archiveGuidance,
+  exportMarkdown,
   getReport,
   getReportById,
   getReportInputs,
@@ -87,3 +100,4 @@ export {
   type SyncResult,
   syncConnector,
 } from './sync';
+export { claudeWriter, DEFAULT_MODEL, type ReportWriter, type WriterMessage } from './writer';

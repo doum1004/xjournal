@@ -836,3 +836,77 @@ export async function importPrototypeReports(
   });
   return result;
 }
+
+// ------------------------------------------------------------------------------------------
+// Markdown export (spec §4 Layer 3, plan.md M4)
+// ------------------------------------------------------------------------------------------
+
+const yamlValue = (v: unknown) =>
+  typeof v === 'string' && /^[\w.@:/ -]*$/.test(v) && v.trim() === v ? v : JSON.stringify(v);
+
+/**
+ * A report version as portable Markdown: front matter with its scope, range, inputs and
+ * generator, and its citations as footnotes, so it stays readable and traceable without the hub.
+ */
+export async function exportMarkdown(
+  ctx: Ctx,
+  versionId: string,
+): Promise<{ filename: string; markdown: string }> {
+  const v = await getReport(ctx, { versionId });
+  const meta = await asCaller(ctx, async (tx) => {
+    const ver = await reportRepo.getVersion(tx, versionId);
+    const project = v.projectId ? await projectRepo.findProject(tx, v.projectId) : null;
+    const inputs = ver ? await reportRepo.inputsOf(tx, ver.id) : [];
+    return { ver, project, inputs };
+  });
+  const numbers = new Map<string, number>();
+  const notes: string[] = [];
+  const byId = new Map(v.citations.map((c) => [c.id, c]));
+  const body = v.bodyMd.replace(
+    /\[\[([rwvs]):([^\]\s#]+)(?:#([^\]\s]+))?\]\]/g,
+    (_m, type: string, id: string, anchor?: string) => {
+      const refId = anchor ? `${id}#${anchor}` : id;
+      let n = numbers.get(refId);
+      if (n == null) {
+        n = numbers.size + 1;
+        numbers.set(refId, n);
+        const c = byId.get(refId);
+        const label =
+          type === 's'
+            ? (c?.title ?? `stat ${id}`)
+            : type === 'v'
+              ? `report version ${refId}`
+              : (c?.title ?? refId);
+        notes.push(`[^${n}]: ${label}${c?.url ? ` <${c.url}>` : ''}`);
+      }
+      return `[^${n}]`;
+    },
+  );
+  const front: [string, unknown][] = [
+    ['kind', v.kind],
+    ['project', meta.project?.slug ?? null],
+    ['title', v.period.title],
+    ['start', v.period.start],
+    ['end_exclusive', v.period.endExcl],
+    ['version', v.versionNo],
+    ['status', v.status],
+    ['path', v.path],
+    ['generator', [v.client, v.model].filter(Boolean).join(' · ') || null],
+    ['template', v.templateVersion],
+    ['input_hash', meta.ver?.inputHash ?? null],
+    ['guidance_hash', meta.ver?.guidanceHash ?? null],
+    ['inputs', meta.inputs.map((i) => `${i.inputType}:${i.inputId}`)],
+    ['change', v.changeReason],
+    ['written_at', v.createdAt],
+  ];
+  const fm = front
+    .map(([k, val]) =>
+      Array.isArray(val)
+        ? `${k}:${val.length ? `\n${val.map((x) => `  - ${yamlValue(x)}`).join('\n')}` : ' []'}`
+        : `${k}: ${val == null ? 'null' : yamlValue(val)}`,
+    )
+    .join('\n');
+  const markdown = `---\n${fm}\n---\n\n# ${v.kind[0]?.toUpperCase()}${v.kind.slice(1)} · ${v.period.title}\n\n${body.trim()}\n${notes.length ? `\n${notes.join('\n')}\n` : ''}`;
+  const filename = `${meta.project?.slug ?? 'report'}-${v.kind}-${v.period.start}-v${v.versionNo}.md`;
+  return { filename, markdown };
+}

@@ -1,7 +1,10 @@
 import type { DbHandle, HubDb } from '@xjournal/db';
 import {
   type ConnectorDeps,
+  type GenerateDeps,
+  generateReport,
   markStaleReports,
+  mirrorDaily,
   morningRun,
   rebuildBundles,
   syncConnector,
@@ -32,6 +35,14 @@ export function createBoss(handle: DbHandle, connectionString?: string): PgBoss 
 
 export const MORNING_QUEUE = 'morning-run';
 export const SYNC_QUEUE = 'connector-sync';
+export const GENERATE_QUEUE = 'generate-report';
+
+export interface GenerateJob {
+  reportId: string;
+  userId: string;
+  workspaceId: string;
+  instructions?: string;
+}
 
 export interface SyncJob {
   connectorAccountId: string;
@@ -47,11 +58,14 @@ export interface Jobs {
   enqueueMorningRun(): Promise<string | null>;
   /** `null` when this account already has a sync queued or running. */
   enqueueSync(job: SyncJob): Promise<string | null>;
+  /** `null` when this report already has a generation queued or running. */
+  enqueueGenerate(job: GenerateJob): Promise<string | null>;
 }
 
 export interface JobsOptions {
   db: HubDb;
   connectors: ConnectorDeps;
+  generate: GenerateDeps;
   /** Cron for the morning run, in `timeZone` (default: 07:00 every day). */
   cron?: string;
   timeZone: string;
@@ -74,6 +88,7 @@ async function ensureQueue(boss: PgBoss, name: string) {
 export async function startJobs(boss: PgBoss, opts: JobsOptions): Promise<Jobs> {
   await ensureQueue(boss, MORNING_QUEUE);
   await ensureQueue(boss, SYNC_QUEUE);
+  await ensureQueue(boss, GENERATE_QUEUE);
 
   await boss.work(MORNING_QUEUE, async () => {
     const r = await morningRun(opts.db, opts.connectors);
@@ -97,10 +112,27 @@ export async function startJobs(boss: PgBoss, opts: JobsOptions): Promise<Jobs> 
     opts.log('info', 'connector sync finished', { source: r.source, status: r.status });
   });
 
+  await boss.work<GenerateJob>(GENERATE_QUEUE, async ([job]) => {
+    if (!job) return;
+    const d = job.data;
+    const ctx = { db: opts.db, actor: { userId: d.userId, workspaceId: d.workspaceId } };
+    const v = await generateReport(ctx, opts.generate, d.reportId, {
+      ...(d.instructions ? { instructions: d.instructions } : {}),
+    });
+    const mirror = await mirrorDaily(ctx, opts.connectors, v);
+    opts.log('info', 'report generated', {
+      kind: v.kind,
+      date: v.period.start,
+      version: v.versionNo,
+      mirror: mirror.status,
+    });
+  });
+
   await boss.schedule(MORNING_QUEUE, opts.cron ?? '0 7 * * *', null, { tz: opts.timeZone });
 
   return {
     enqueueMorningRun: () => boss.send(MORNING_QUEUE, {}, { singletonKey: 'morning' }),
+    enqueueGenerate: (job) => boss.send(GENERATE_QUEUE, job, { singletonKey: job.reportId }),
     enqueueSync: (job) => boss.send(SYNC_QUEUE, job, { singletonKey: job.connectorAccountId }),
   };
 }

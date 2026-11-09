@@ -43,12 +43,15 @@ export interface ApiDeps {
   config: Pick<Config, 'mode' | 'localToken'>;
   db: DbHandle;
   connectors: svc.ConnectorDeps;
+  /** Direct report generation (M4); defaults to the connectors' secret store. */
+  generate?: svc.GenerateDeps;
   /** The job queue; without it, syncs and runs happen inside the request. */
   jobs?: Jobs;
 }
 
 export function createApi(deps: ApiDeps) {
   const { config, db, connectors, jobs } = deps;
+  const generate: svc.GenerateDeps = deps.generate ?? { secrets: connectors.secrets };
   const api = new Hono<Env>();
 
   // The local owner never changes once `hub init` has run, so it's looked up once.
@@ -259,6 +262,70 @@ export function createApi(deps: ApiDeps) {
   api.get('/stats', async (c) =>
     c.json({ items: await svc.getStats(c.get('ctx'), c.req.query()) }),
   );
+
+  // Direct generation (spec §16.1, plan.md M4).
+  api.get('/ai', async (c) => c.json(await svc.aiStatus(generate)));
+  api.put('/ai/key', async (c) => {
+    await svc.setApiKey(generate, await body(c));
+    return c.body(null, 204);
+  });
+  api.delete('/ai/key', async (c) => {
+    await svc.removeApiKey(generate);
+    return c.body(null, 204);
+  });
+  api.post('/reports/:r/generate', async (c) => {
+    const ctx = c.get('ctx');
+    const raw = (await c.req.json().catch(() => ({}))) as { instructions?: unknown };
+    const instructions =
+      typeof raw.instructions === 'string' && raw.instructions.trim()
+        ? raw.instructions.trim()
+        : undefined;
+    const reportId = c.req.param('r');
+    await svc.getReportById(ctx, reportId); // 404 now, not in the worker
+    if (!(await svc.aiStatus(generate)).hasKey) {
+      throw new svc.ServiceError(
+        409,
+        'conflict',
+        'Direct generation is off: add a Claude API key in Settings → AI',
+        undefined,
+        {
+          reason: 'direct_generation_disabled',
+        },
+      );
+    }
+    if (jobs) {
+      const jobId = await jobs.enqueueGenerate({
+        reportId,
+        ...ctx.actor,
+        ...(instructions ? { instructions } : {}),
+      });
+      return c.json({ queued: jobId != null, alreadyRunning: jobId == null }, 202);
+    }
+    const v = await svc.generateReport(
+      ctx,
+      generate,
+      reportId,
+      instructions ? { instructions } : {},
+    );
+    return c.json({ ...v, mirror: await svc.mirrorDaily(ctx, connectors, v) });
+  });
+  api.post('/projects/:p/reports/refresh', async (c) => {
+    const ctx = c.get('ctx');
+    const projectId = c.req.param('p');
+    if (!jobs) return c.json(await svc.refreshReports(ctx, generate, projectId));
+    const due = await svc.dueReportIds(ctx, projectId);
+    let queued = 0;
+    for (const d of due)
+      if (await jobs.enqueueGenerate({ reportId: d.reportId, ...ctx.actor })) queued++;
+    return c.json({ queued, due: due.length }, 202);
+  });
+  api.get('/report-versions/:v/export', async (c) => {
+    const { filename, markdown } = await svc.exportMarkdown(c.get('ctx'), c.req.param('v'));
+    return c.body(markdown, 200, {
+      'content-type': 'text/markdown; charset=utf-8',
+      'content-disposition': `attachment; filename="${filename}"`,
+    });
+  });
 
   // Guidance (api.md §3.6).
   api.get('/guidance', async (c) =>

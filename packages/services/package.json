@@ -3,11 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Service layer (api.md \u00c2\u00a73) with authorization",
+  "description": "Service layer (api.md Â§3) with authorization",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@xjournal/connectors": "workspace:*",
     "@xjournal/core": "workspace:*",
     "@xjournal/db": "workspace:*",
