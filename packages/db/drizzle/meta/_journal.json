@@ -29,6 +29,20 @@
       "when": 1794208501340,
       "tag": "0003_bundles_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794210705940,
+      "tag": "0004_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794210706522,
+      "tag": "0005_reports_rls",
+      "breakpoints": true
     }
   ]
 }

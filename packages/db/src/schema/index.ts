@@ -3,4 +3,5 @@ export * from './bundles';
 export * from './enums';
 export * from './identity';
 export * from './records';
+export * from './reports';
 export * from './sources';

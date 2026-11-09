@@ -584,6 +584,149 @@ describe(`RLS on ${testTarget()}`, () => {
     });
   });
 
+  describe('reports and guidance', () => {
+    const ins = (who: keyof Seed['u'], stmt: string) => s.as(who, (tx) => affected(tx, stmt));
+    let report = '';
+    let version = '';
+
+    test('reports_insert, report_audience_insert, reports_select, report_audience_select', async () => {
+      cover('reports_insert', 'report_audience_insert', 'reports_select', 'report_audience_select');
+      report = newId();
+      const mk = (id: string) =>
+        `insert into reports (id, workspace_id, project_id, kind, period_start, period_end_excl, audience_key)
+         values ('${id}', '${s.ws.W}', '${s.p.P}', 'daily', '2026-11-08', '2026-11-09', 'me:${s.u.bob}')`;
+      // bob (contributor of P) creates the report and puts himself in its audience, in one go.
+      await s.as('bob', async (tx) => {
+        await affected(tx, mk(report));
+        await affected(
+          tx,
+          `insert into report_audience (report_id, user_id, workspace_id) values ('${report}', '${s.u.bob}', '${s.ws.W}')`,
+        );
+      });
+      await expect(ins('carol', mk(newId()))).rejects.toThrow(RLS_VIOLATION); // viewer
+      await expect(
+        ins(
+          'carol',
+          `insert into report_audience (report_id, user_id, workspace_id) values ('${report}', '${s.u.carol}', '${s.ws.W}')`,
+        ),
+      ).rejects.toThrow(RLS_VIOLATION);
+      const sees = (who: keyof Seed['u'], t: string) =>
+        s.as(who, (tx) =>
+          visible(
+            tx,
+            t,
+            `report_id = '${report}'`.replace('report_id', t === 'reports' ? 'id' : 'report_id'),
+          ),
+        );
+      expect(await sees('bob', 'reports')).toBe(1);
+      expect(await sees('dave', 'reports')).toBe(0); // a manager, but not in the audience
+      expect(await sees('bob', 'report_audience')).toBe(1);
+      expect(await sees('dave', 'report_audience')).toBe(0);
+    });
+
+    test('report_versions_insert/select, reports_update', async () => {
+      cover('report_versions_insert', 'report_versions_select', 'reports_update');
+      version = newId();
+      const v = (id: string, actor: string) =>
+        `insert into report_versions (id, report_id, workspace_id, version_no, body_md, path, template_version,
+           actor_user_id, input_hash, guidance_hash, change_reason, validation)
+         values ('${id}', '${report}', '${s.ws.W}', ${id === version ? 1 : 2}, '- x', 'agent', 'daily@1',
+           '${actor}', 'i', 'g', 'initial', '{}')`;
+      expect(await ins('bob', v(version, s.u.bob))).toBe(1);
+      await expect(ins('dave', v(newId(), s.u.dave))).rejects.toThrow(RLS_VIOLATION);
+      await expect(ins('bob', v(newId(), s.u.dave))).rejects.toThrow(RLS_VIOLATION); // as someone else
+      expect(
+        await s.as('bob', (tx) => visible(tx, 'report_versions', `report_id = '${report}'`)),
+      ).toBe(1);
+      expect(
+        await s.as('dave', (tx) => visible(tx, 'report_versions', `report_id = '${report}'`)),
+      ).toBe(0);
+      const upd = `update reports set current_version_id = '${version}' where id = '${report}'`;
+      expect(await ins('bob', upd)).toBe(1);
+      expect(await ins('dave', upd)).toBe(0);
+    });
+
+    test('report_inputs, evidence_refs, report_stats: read with the report, written by its writers', async () => {
+      const rows: [string, string][] = [
+        [
+          'report_inputs',
+          `(report_version_id, workspace_id, input_type, input_id, input_hash) values ('${version}', '${s.ws.W}', 'bundle', 'b1', 'h')`,
+        ],
+        [
+          'evidence_refs',
+          `(report_version_id, workspace_id, anchor, ref_type, ref_id) values ('${version}', '${s.ws.W}', 'a1', 'record_revision', 'r1')`,
+        ],
+        [
+          'report_stats',
+          `(id, report_version_id, workspace_id, metric, query, value) values ('${newId()}', '${version}', '${s.ws.W}', 'm', '{}', '1')`,
+        ],
+      ];
+      for (const [t, values] of rows) {
+        cover(`${t}_insert`, `${t}_select`);
+        expect(await ins('bob', `insert into ${t} ${values}`)).toBe(1);
+        await expect(
+          ins('dave', `insert into ${t} ${values.replace("'b1'", "'b2'").replace("'a1'", "'a2'")}`),
+        ).rejects.toThrow(RLS_VIOLATION);
+        expect(await s.as('bob', (tx) => visible(tx, t, `report_version_id = '${version}'`))).toBe(
+          1,
+        );
+        expect(await s.as('dave', (tx) => visible(tx, t, `report_version_id = '${version}'`))).toBe(
+          0,
+        );
+      }
+    });
+
+    test('guidance_insert, guidance_select, guidance_update, guidance_versions_*', async () => {
+      cover(
+        'guidance_insert',
+        'guidance_select',
+        'guidance_update',
+        'guidance_versions_insert',
+        'guidance_versions_select',
+      );
+      const g = (id: string, author: string, scope: string, extra = '') =>
+        `insert into guidance (id, workspace_id, scope, project_id, report_id, author_user_id, visibility)
+         values ('${id}', '${s.ws.W}', '${scope}', ${scope === 'workspace' ? 'null' : `'${s.p.P}'`},
+           ${scope === 'report' ? `'${report}'` : 'null'}, '${author}', ${extra || "'project'"})`;
+      const ws = newId();
+      const proj = newId();
+      const priv = newId();
+      expect(await ins('alice', g(ws, s.u.alice, 'workspace'))).toBe(1);
+      await expect(ins('bob', g(newId(), s.u.bob, 'workspace'))).rejects.toThrow(RLS_VIOLATION);
+      expect(await ins('dave', g(proj, s.u.dave, 'project'))).toBe(1);
+      await expect(ins('bob', g(newId(), s.u.bob, 'project'))).rejects.toThrow(RLS_VIOLATION);
+      expect(await ins('bob', g(newId(), s.u.bob, 'report'))).toBe(1); // he writes that report
+      expect(await ins('dave', g(priv, s.u.dave, 'project', "'private'"))).toBe(1);
+
+      const sees = (who: keyof Seed['u'], id: string) =>
+        s.as(who, (tx) => visible(tx, 'guidance', `id = '${id}'`));
+      expect(await sees('carol', proj)).toBe(1); // a member of P
+      expect(await sees('eve', proj)).toBe(0);
+      expect(await sees('carol', priv)).toBe(0);
+      expect(await sees('dave', priv)).toBe(1);
+      expect(await sees('eve', ws)).toBe(1); // workspace scope: any member of the workspace's projects
+
+      expect(
+        await ins('dave', `update guidance set archived_at = now() where id = '${priv}'`),
+      ).toBe(1);
+      expect(
+        await ins('alice', `update guidance set archived_at = now() where id = '${proj}'`),
+      ).toBe(0);
+
+      const gv = (gid: string, by: string) =>
+        `insert into guidance_versions (id, guidance_id, workspace_id, version_no, text, content_hash, created_by)
+         values ('${newId()}', '${gid}', '${s.ws.W}', 1, 'Be concise', 'h', '${by}')`;
+      expect(await ins('dave', gv(proj, s.u.dave))).toBe(1);
+      await expect(ins('bob', gv(proj, s.u.bob))).rejects.toThrow(RLS_VIOLATION);
+      expect(
+        await s.as('carol', (tx) => visible(tx, 'guidance_versions', `guidance_id = '${proj}'`)),
+      ).toBe(1);
+      expect(
+        await s.as('eve', (tx) => visible(tx, 'guidance_versions', `guidance_id = '${proj}'`)),
+      ).toBe(0);
+    });
+  });
+
   describe('daily bundles', () => {
     /** A bundle for a project and date holding the given revisions (as superuser). */
     async function seedBundle(
