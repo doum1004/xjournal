@@ -13,6 +13,20 @@ import { type Cursor, defineConnector, type SyncInput, type SyncPage } from './s
 export const zConfluenceConfig = zAtlassianBase.extend({
   /** Skip pages under these page IDs (e.g. the work-log tree). */
   excludeAncestorIds: z.array(z.string().trim()).default([]),
+  /** The work log daily reports are published to (plan.md M3). */
+  worklog: z
+    .object({
+      /** Space key of the work log, e.g. ~jdoe. */
+      space: z.string().trim().min(1),
+      /** The page the "Work Logs - <YYYY>" pages live under. */
+      rootPageId: z.string().trim().min(1),
+      /** Publish every saved daily report automatically. */
+      mirrorDaily: z.boolean().default(false),
+      /** Jira application link name and ID, for live [PROJ-123] macros. */
+      jiraServer: z.string().trim().optional(),
+      jiraServerId: z.string().trim().optional(),
+    })
+    .optional(),
 });
 export type ConfluenceConfig = z.infer<typeof zConfluenceConfig>;
 

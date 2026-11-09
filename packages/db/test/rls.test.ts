@@ -727,6 +727,25 @@ describe(`RLS on ${testTarget()}`, () => {
     });
   });
 
+  describe('exports', () => {
+    test('exports_insert, exports_select: your own, for versions you can read', async () => {
+      cover('exports_insert', 'exports_select');
+      const [v] = (
+        await s.db.execute<{ id: string; created_by: string }>(
+          sql`select id from report_versions limit 1`,
+        )
+      ).rows;
+      const row = (who: keyof Seed['u']) =>
+        `insert into exports (id, workspace_id, report_version_id, destination, target, created_by)
+         values ('${newId()}', '${s.ws.W}', '${v?.id}', 'confluence-worklog', '2026-11-08', '${s.u[who]}')`;
+      expect(await s.as('bob', (tx) => affected(tx, row('bob')))).toBe(1);
+      await expect(s.as('dave', (tx) => affected(tx, row('dave')))).rejects.toThrow(RLS_VIOLATION);
+      await expect(s.as('dave', (tx) => affected(tx, row('bob')))).rejects.toThrow(RLS_VIOLATION);
+      expect(await s.as('bob', (tx) => visible(tx, 'exports'))).toBe(1);
+      expect(await s.as('dave', (tx) => visible(tx, 'exports'))).toBe(0);
+    });
+  });
+
   describe('daily bundles', () => {
     /** A bundle for a project and date holding the given revisions (as superuser). */
     async function seedBundle(

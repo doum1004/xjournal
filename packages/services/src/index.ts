@@ -28,6 +28,12 @@ export { actorForUser, type InitOptions, initLocal, localOwner } from './local';
 export { type MorningRunOptions, type MorningRunResult, morningRun } from './morning';
 export { atLeast, createProject, listProjects } from './projects';
 export {
+  DESTINATION as WORKLOG_DESTINATION,
+  mirrorDaily,
+  type PublishResult,
+  publishReport,
+} from './publish';
+export {
   type AddNoteResult,
   addNote,
   editNote,

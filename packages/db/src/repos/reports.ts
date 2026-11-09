@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'dr
 import type { Tx } from '../actor';
 import {
   evidenceRefs,
+  exportsTable,
   guidance,
   guidanceVersions,
   projectMembers,
@@ -419,4 +420,25 @@ export async function setReportStale(tx: Tx, reportId: string): Promise<void> {
     .update(reports)
     .set({ status: 'stale', staleSince: new Date() })
     .where(eq(reports.id, reportId));
+}
+
+/** The last time the caller published `target` to `destination` (the edit-conflict guard). */
+export async function lastExport(tx: Tx, userId: string, destination: string, target: string) {
+  const rows = await tx
+    .select()
+    .from(exportsTable)
+    .where(
+      and(
+        eq(exportsTable.createdBy, userId),
+        eq(exportsTable.destination, destination),
+        eq(exportsTable.target, target),
+      ),
+    )
+    .orderBy(desc(exportsTable.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function insertExport(tx: Tx, row: typeof exportsTable.$inferInsert): Promise<void> {
+  await tx.insert(exportsTable).values(row);
 }

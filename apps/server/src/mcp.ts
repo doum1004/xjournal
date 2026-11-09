@@ -19,6 +19,8 @@ export interface McpCaller {
 
 export interface McpDeps {
   db: HubDb;
+  /** For mirroring saved daily reports to the Confluence work log. */
+  connectors?: svc.ConnectorDeps;
 }
 
 export const MCP_SERVER_INFO = { name: 'xjournal', version: '0.3.0' } as const;
@@ -175,7 +177,7 @@ function buildServer(caller: McpCaller, deps: McpDeps): McpServer {
     },
     async (a, c) => {
       try {
-        return await svc.saveReportVersion(c, a.reportId, {
+        const saved = await svc.saveReportVersion(c, a.reportId, {
           bodyMd: a.bodyMd,
           inputHash: a.inputHash,
           ...(a.changeSummary ? { changeSummary: a.changeSummary } : {}),
@@ -185,6 +187,10 @@ function buildServer(caller: McpCaller, deps: McpDeps): McpServer {
             ...(a.model ? { model: a.model } : {}),
           },
         });
+        const mirror = deps.connectors
+          ? await svc.mirrorDaily(c, deps.connectors, saved)
+          : { status: 'skipped', reason: 'no connectors' };
+        return { ...saved, mirror };
       } catch (e) {
         if (e instanceof svc.ServiceError && e.code === 'validation_failed') {
           return { saved: false, message: e.message, validation: e.data?.validation };

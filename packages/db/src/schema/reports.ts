@@ -180,3 +180,25 @@ export const guidanceVersions = pgTable(
   },
   (t) => [unique('guidance_versions_guidance_no_key').on(t.guidanceId, t.versionNo)],
 );
+
+/** Published copies of report versions (schema.md §8), e.g. a Confluence work-log row. */
+export const exportsTable = pgTable(
+  'exports',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    reportVersionId: text('report_version_id').references(() => reportVersions.id),
+    /** 'confluence-worklog', 'markdown', … */
+    destination: text('destination').notNull(),
+    /** Where inside the destination, e.g. the date of a work-log row. */
+    target: text('target').notNull(),
+    externalUrl: text('external_url'),
+    /** Hash of the published text as the destination stores it: the edit-conflict guard. */
+    contentHash: text('content_hash'),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: tz('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('exports_destination_target_idx').on(t.createdBy, t.destination, t.target)],
+);

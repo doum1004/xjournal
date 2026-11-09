@@ -53,6 +53,10 @@ Connectors:
   sync [ID…] [--stream S]… [--from D] [--max-pages N]
                                      Sync all connected accounts, or the ones given
   status                             Reports due (missing or stale), Inbox, connector health
+  publish --date D --project SLUG [--force]
+                                     The day's report to the Confluence work log (the
+                                     Confluence connector's "worklog" config). Refuses to
+                                     overwrite a row edited in Confluence unless --force.
   run [--days N] [--no-sync]         The morning run: sync every connector, then rebuild the
                                      bundles of the last N days (default 14) and stale days
   bundles [--project SLUG] [--date D]
@@ -400,6 +404,42 @@ const commands: Record<string, Handler> = {
     const projectIds = values.project ? [await projectIdFor(c, values.project)] : undefined;
     const r = await svc.rebuildBundles(h.db, projectIds ? { projectIds } : {});
     console.log(`bundles: ${r.built} built, ${r.changed} changed across ${r.projects} project(s)`);
+    return 0;
+  },
+
+  async publish(h, args) {
+    const { values } = parseArgs({
+      args,
+      options: {
+        date: { type: 'string' },
+        project: { type: 'string' },
+        force: { type: 'boolean' },
+      },
+    });
+    if (!values.date || !values.project) {
+      console.error('Usage: hub publish --date D --project SLUG [--force]');
+      return 1;
+    }
+    const c = await ctx(h);
+    const v = await svc.getReport(c, {
+      projectId: await projectIdFor(c, values.project),
+      kind: 'daily',
+      date: values.date,
+    });
+    const r = await svc.publishReport(c, connectorDeps(), {
+      versionId: v.versionId,
+      confirm: true,
+      force: values.force ?? false,
+    });
+    if (r.status === 'published')
+      console.log(`Published ${values.date} → ${r.pageTitle} <${r.url}>`);
+    else if (r.status === 'refused') {
+      console.log(
+        `REFUSED: the ${values.date} row on ${r.pageTitle} was edited outside the hub:\n---\n${r.currentText}\n---\n` +
+          'Put that text into the report (a new version), or re-run with --force to overwrite it.',
+      );
+      return 2;
+    }
     return 0;
   },
 

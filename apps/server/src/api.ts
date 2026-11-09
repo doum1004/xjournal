@@ -235,8 +235,18 @@ export function createApi(deps: ApiDeps) {
   api.get('/reports/:r/inputs', async (c) =>
     c.json(await svc.getReportInputs(c.get('ctx'), c.req.param('r'))),
   );
-  api.post('/reports/:r/versions', async (c) =>
-    c.json(await svc.saveReportVersion(c.get('ctx'), c.req.param('r'), await body(c)), 201),
+  api.post('/reports/:r/versions', async (c) => {
+    const saved = await svc.saveReportVersion(c.get('ctx'), c.req.param('r'), await body(c));
+    const mirror = await svc.mirrorDaily(c.get('ctx'), connectors, saved);
+    return c.json({ ...saved, mirror }, 201);
+  });
+  api.post('/report-versions/:v/publish', async (c) =>
+    c.json(
+      await svc.publishReport(c.get('ctx'), connectors, {
+        ...((await body(c)) as Record<string, unknown>),
+        versionId: c.req.param('v'),
+      }),
+    ),
   );
   api.get('/report-versions/:v', async (c) =>
     c.json(await svc.getReport(c.get('ctx'), { versionId: c.req.param('v') })),

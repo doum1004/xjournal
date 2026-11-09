@@ -28,6 +28,11 @@ export interface AppDeps {
 export function createApp(deps: AppDeps) {
   const app = new Hono();
   const { config, db, auth } = deps;
+  // Connector registry and secret store. Tests default to an in-memory store.
+  const connectors = deps.connectors ?? {
+    registry: builtinConnectors(),
+    secrets: memorySecrets(),
+  };
 
   // Health (api.md §1): no authentication, no data.
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
@@ -73,10 +78,6 @@ export function createApp(deps: AppDeps) {
   }
 
   // REST API (api.md §3), after the auth routes so /api/v1/auth/* is matched first.
-  const connectors = deps.connectors ?? {
-    registry: builtinConnectors(),
-    secrets: memorySecrets(),
-  };
   app.route(
     '/api/v1',
     createApi({ config, db, connectors, ...(deps.jobs ? { jobs: deps.jobs } : {}) }),
@@ -95,7 +96,7 @@ export function createApp(deps: AppDeps) {
               scopes: typeof claims.scope === 'string' ? claims.scope.split(' ') : [],
               clientId: typeof claims.azp === 'string' ? claims.azp : undefined,
             },
-            { db: db.db },
+            { db: db.db, connectors },
           ),
         { resource: new URL('/mcp', config.baseURL).toString() },
       )
@@ -111,7 +112,7 @@ export function createApp(deps: AppDeps) {
       return handleMcp(
         req,
         { via: 'local', userId: null, scopes: ['read', 'write'] },
-        { db: db.db },
+        { db: db.db, connectors },
       );
     }
     if (!oauthMcp) return problem(503, 'unavailable', 'Authentication is not configured');

@@ -6,6 +6,17 @@ export {
   zConfluenceConfig,
 } from './confluence';
 export {
+  cellHash,
+  findRow,
+  markdownToStorage,
+  type PublishOutcome,
+  placeRow,
+  publishWorklogDay,
+  rowHtml,
+  TABLE_HEAD,
+  type WorklogTarget,
+} from './confluence-publish';
+export {
   type ConfluenceConfig,
   type ConfluenceWorklogScan,
   cellOf,
