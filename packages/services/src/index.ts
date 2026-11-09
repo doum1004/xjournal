@@ -38,6 +38,16 @@ export {
   search,
 } from './records';
 export {
+  applyRules,
+  createRule,
+  deactivateRule,
+  listRules,
+  previewRule,
+  type RulePreview,
+  type RuleView,
+  updateRule,
+} from './rules';
+export {
   archiveProject,
   getWorkspace,
   replaceConnectorSecret,

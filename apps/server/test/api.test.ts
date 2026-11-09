@@ -253,3 +253,37 @@ describe('REST API: settings, connectors, identities, bundles', () => {
     expect(rebuilt).toMatchObject({ date, changed: false });
   });
 });
+
+describe('REST API: project rules', () => {
+  test('create, preview, update with If-Match, deactivate', async () => {
+    const projects = await json(await call('GET', '/projects'));
+    const sdk = projects.items.find((x: { slug: string }) => x.slug === 'sdk');
+    const created = await call('POST', '/rules', { projectId: sdk.id, match: { repo: 'acme/*' } });
+    expect(created.status).toBe(201);
+    const r = await json(created);
+
+    const preview = await json(await call('POST', '/rules/preview', { match: { repo: 'acme/*' } }));
+    expect(preview).toMatchObject({ total: 0, matches: [] });
+
+    const put = (version: string | null, body: unknown) =>
+      app.request(`/api/v1/rules/${r.id}`, {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          ...(version ? { 'if-match': version } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    expect((await json(await put('"1"', { priority: 3 }))).version).toBe(2);
+    expect((await put('1', { priority: 4 })).status).toBe(412);
+
+    const del = await app.request(`/api/v1/rules/${r.id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}`, 'if-match': '2' },
+    });
+    expect(del.status).toBe(204);
+    expect((await json(await call('GET', '/rules'))).items).toEqual([]);
+    expect((await json(await call('POST', '/rules/apply'))).routed).toBe(0);
+  });
+});

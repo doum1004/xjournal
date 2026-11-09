@@ -93,6 +93,11 @@ export interface WriteTarget {
   routedBy: RoutedBy;
   /** Time zone for applicable dates when a record has none. */
   timeZone: string;
+  /** Project rules (spec §8.4): a match files the record there, ahead of `project`. */
+  routeFor?: (r: RecordInput) => {
+    project: { id: string; visibility: Visibility };
+    timeZone: string;
+  } | null;
   /** Is this source actor the caller? Without it every record counts as the caller's. */
   whoIs?: (actor: string) => { isMine: boolean; identityId?: string };
 }
@@ -150,6 +155,8 @@ export async function writeRecords(
 
     const eventTime = new Date(r.eventTime);
     const who = target.whoIs?.(r.actor) ?? { isMine: true };
+    const ruled = target.routeFor?.(r) ?? null;
+    const project = ruled?.project ?? target.project;
     await recordRepo.insertRecord(
       tx,
       {
@@ -165,11 +172,12 @@ export async function writeRecords(
         isMine: who.isMine,
         eventTime,
         capturedAt: now,
-        applicableDate: r.applicableDate ?? localDate(eventTime, target.timeZone),
-        projectId: target.project?.id ?? null,
-        routingStatus: target.routingStatus,
-        routedBy: target.routedBy,
-        visibility: target.project?.visibility ?? 'private',
+        applicableDate:
+          r.applicableDate ?? localDate(eventTime, ruled?.timeZone ?? target.timeZone),
+        projectId: project?.id ?? null,
+        routingStatus: ruled ? 'auto' : target.routingStatus,
+        routedBy: ruled ? 'rule' : target.routedBy,
+        visibility: project?.visibility ?? 'private',
         title: r.title,
         ...(r.url ? { url: r.url } : {}),
         ...(r.summary ? { summary: r.summary } : {}),

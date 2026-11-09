@@ -8,6 +8,7 @@ import type {
   ProjectView,
   RecordView,
   RevisionView,
+  RuleMatch,
   WorkspaceView,
 } from '@xjournal/core';
 
@@ -48,11 +49,21 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return requestWith<T>(method, path, body, {});
+}
+
+async function requestWith<T>(
+  method: string,
+  path: string,
+  body: unknown,
+  extra: Record<string, string>,
+): Promise<T> {
   const token = tokenStore.get();
   const res = await fetch(`/api/v1${path}`, {
     method,
     headers: {
+      ...extra,
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
       'x-hub-client': 'web',
@@ -94,6 +105,16 @@ export interface RouteBody {
   kind?: string;
   visibility?: string;
   tags?: string[];
+}
+
+export interface RuleView {
+  id: string;
+  projectId: string;
+  priority: number;
+  match: RuleMatch;
+  version: number;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface ProjectPatch {
@@ -167,6 +188,21 @@ export const api = {
   syncConnector: (id: string, body: { backfillFrom?: string } = {}) =>
     request<Queued>('POST', `/connectors/${id}/sync`, body),
   morningRun: () => request<Queued>('POST', '/runs/morning'),
+
+  rules: () => request<{ items: RuleView[] }>('GET', '/rules'),
+  createRule: (body: { projectId: string; priority?: number; match: RuleMatch }) =>
+    request<RuleView>('POST', '/rules', body),
+  updateRule: (r: RuleView, body: Partial<Pick<RuleView, 'projectId' | 'priority' | 'match'>>) =>
+    requestWith<RuleView>('PUT', `/rules/${r.id}`, body, { 'if-match': String(r.version) }),
+  removeRule: (r: RuleView) =>
+    requestWith<void>('DELETE', `/rules/${r.id}`, undefined, { 'if-match': String(r.version) }),
+  previewRule: (match: RuleMatch) =>
+    request<{
+      matches: { id: string; title: string; source: string; applicableDate: string }[];
+      total: number;
+    }>('POST', '/rules/preview', { match }),
+  applyRules: () =>
+    request<{ routed: number; byProject: Record<string, number> }>('POST', '/rules/apply'),
 
   identities: () => request<{ items: IdentityView[] }>('GET', '/identities'),
   addIdentity: (body: { source: string; accountKey: string; aliases: string[] }) =>

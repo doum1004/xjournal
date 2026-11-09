@@ -187,6 +187,29 @@ export function createApi(deps: ApiDeps) {
     return c.body(null, 204);
   });
 
+  // Project rules (spec §8.4, api.md §3.8).
+  const ifMatch = (c: Context) => {
+    const v = c.req.header('if-match')?.replace(/^W\//, '').replace(/"/g, '');
+    return v && /^\d+$/.test(v) ? Number(v) : null;
+  };
+  api.get('/rules', async (c) =>
+    c.json({
+      items: await svc.listRules(c.get('ctx'), { includeInactive: c.req.query('all') === 'true' }),
+    }),
+  );
+  api.post('/rules', async (c) => c.json(await svc.createRule(c.get('ctx'), await body(c)), 201));
+  api.put('/rules/:id', async (c) =>
+    c.json(await svc.updateRule(c.get('ctx'), c.req.param('id'), ifMatch(c), await body(c))),
+  );
+  api.delete('/rules/:id', async (c) => {
+    await svc.deactivateRule(c.get('ctx'), c.req.param('id'), ifMatch(c));
+    return c.body(null, 204);
+  });
+  api.post('/rules/preview', async (c) =>
+    c.json(await svc.previewRule(c.get('ctx'), await body(c))),
+  );
+  api.post('/rules/apply', async (c) => c.json(await svc.applyRules(c.get('ctx'))));
+
   // The morning run (spec §5.1): sync everything, rebuild bundles.
   api.post('/runs/morning', async (c) => {
     if (!jobs) return c.json(await svc.morningRun(c.get('ctx').db, connectors));

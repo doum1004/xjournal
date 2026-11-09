@@ -5,7 +5,7 @@ import {
   type SyncLog,
   type SyncPage,
 } from '@xjournal/connectors';
-import { addDays, localDate } from '@xjournal/core';
+import { addDays, firstMatch, localDate } from '@xjournal/core';
 import { connectorRepo, projectRepo } from '@xjournal/db';
 import { redact } from '@xjournal/secrets';
 import { type ConnectorDeps, connectorConfigOf, identityResolver, messageOf } from './connectors';
@@ -20,6 +20,7 @@ import {
   writeRecords,
 } from './ingest';
 import { workspaceTimeZone } from './projects';
+import { routingRules } from './rules';
 
 // The sync runner (spec §8.1): for each stream of a connector account, page from the stored
 // cursor, write each page's records and its cursor in one transaction (so a crash resumes
@@ -79,10 +80,13 @@ export async function syncConnector(
     const only = sources.length === 1 ? sources[0] : undefined;
     const project = only ? await projectRepo.findProject(tx, only.projectId) : null;
     const identities = await connectorRepo.listIdentities(tx, account.source);
+    const rules = await routingRules(tx);
     await connectorRepo.updateAccount(tx, account.id, { status: 'running' });
     return {
       account,
       identities,
+      rules,
+      wsTz,
       timeZone: project?.timeZone ?? wsTz,
       project: project && only ? { id: project.id, visibility: only.defaultVisibility } : null,
     };
@@ -148,6 +152,20 @@ export async function syncConnector(
       routedBy: 'connector',
       timeZone: setup.timeZone,
       whoIs: identityResolver(setup.identities),
+      routeFor: (r) => {
+        const m = firstMatch(setup.rules, {
+          source: account.source,
+          kind: r.kind,
+          title: r.title,
+          payload: r.payload ?? null,
+        });
+        return m
+          ? {
+              project: { id: m.project.id, visibility: m.project.visibility },
+              timeZone: m.project.timeZone ?? setup.wsTz,
+            }
+          : null;
+      },
     };
     const key = { connectorAccountId: account.id, workspaceId: ctx.actor.workspaceId };
 

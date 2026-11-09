@@ -1,18 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ConnectorKindView, ConnectorView, IdentityView, ProjectView } from '@xjournal/core';
+import type {
+  ConnectorKindView,
+  ConnectorView,
+  IdentityView,
+  ProjectView,
+  RuleMatch,
+} from '@xjournal/core';
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { alreadyRunning, api } from '../api';
+import { alreadyRunning, api, type RuleView } from '../api';
 import { Badge, Button, Empty, ErrorNote, inputClass, Panel } from '../components/ui';
 import { useProject } from '../project';
 
 // Settings (plan.md M2): workspace, projects, connectors and identities, all manageable
 // without the CLI. Credentials are write-only: entered once, never shown again (spec §8.7).
 
-export type SettingsTab = 'connectors' | 'projects' | 'workspace' | 'identities';
-export const settingsTabs: SettingsTab[] = ['connectors', 'projects', 'workspace', 'identities'];
+export type SettingsTab = 'connectors' | 'rules' | 'projects' | 'workspace' | 'identities';
+export const settingsTabs: SettingsTab[] = [
+  'connectors',
+  'rules',
+  'projects',
+  'workspace',
+  'identities',
+];
 
 const TAB_LABEL: Record<SettingsTab, string> = {
   connectors: 'Connectors',
+  rules: 'Rules',
   projects: 'Projects',
   workspace: 'Workspace',
   identities: 'Identities',
@@ -46,6 +59,7 @@ export function SettingsPage({
         ))}
       </div>
       {tab === 'connectors' && <Connectors />}
+      {tab === 'rules' && <Rules />}
       {tab === 'projects' && <Projects />}
       {tab === 'workspace' && <Workspace />}
       {tab === 'identities' && <Identities />}
@@ -1144,5 +1158,206 @@ function Identities() {
         </form>
       </Panel>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------------------------------
+// Project rules (spec §8.4)
+// ------------------------------------------------------------------------------------------
+
+const MATCH_FIELDS: {
+  key: 'source' | 'repo' | 'project' | 'space' | 'titleContains';
+  label: string;
+  hint: string;
+}[] = [
+  { key: 'source', label: 'Source', hint: 'e.g. github:* or jira:jira.example.com' },
+  { key: 'repo', label: 'GitHub repo', hint: 'e.g. acme/cli or acme/*' },
+  { key: 'project', label: 'Jira project', hint: 'e.g. PROJ' },
+  { key: 'space', label: 'Confluence space', hint: 'e.g. ENG' },
+  { key: 'titleContains', label: 'Title contains', hint: 'Plain text, any case' },
+];
+
+type MatchForm = Record<(typeof MATCH_FIELDS)[number]['key'], string>;
+const emptyMatch: MatchForm = { source: '', repo: '', project: '', space: '', titleContains: '' };
+
+const matchOf = (f: MatchForm): RuleMatch =>
+  Object.fromEntries(
+    Object.entries(f)
+      .map(([k, v]) => [k, v.trim()])
+      .filter(([, v]) => v),
+  ) as RuleMatch;
+
+const describeMatch = (m: RuleMatch) =>
+  Object.entries(m)
+    .map(([k, v]) => `${k} ${Array.isArray(v) ? v.join('|') : v}`)
+    .join(' · ');
+
+function Rules() {
+  const { projects } = useProject();
+  const invalidate = useInvalidate();
+  const rules = useQuery({ queryKey: ['rules'], queryFn: api.rules });
+  const slugs = new Map(projects.map((p) => [p.id, p.slug]));
+  const manageable = projects.filter((p) => p.role === 'owner' || p.role === 'manager');
+  const [form, setForm] = useState<MatchForm>(emptyMatch);
+  const [projectId, setProjectId] = useState(manageable[0]?.id ?? '');
+  const match = matchOf(form);
+  const hasMatch = Object.keys(match).length > 0;
+
+  const preview = useQuery({
+    queryKey: ['rule-preview', JSON.stringify(match)],
+    queryFn: () => api.previewRule(match),
+    enabled: hasMatch,
+  });
+  const create = useMutation({
+    mutationFn: () => api.createRule({ projectId, match }),
+    onSuccess: () => {
+      setForm(emptyMatch);
+      return invalidate('rules');
+    },
+  });
+  const apply = useMutation({
+    mutationFn: api.applyRules,
+    onSuccess: () => invalidate('inbox', 'days', 'day', 'rule-preview'),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted">
+          Rules file incoming records into projects, first match wins (lowest priority first). They
+          apply to new records from connectors, ahead of an account's own project. Anything no rule
+          matches goes to the Inbox.
+        </p>
+        <Button onClick={() => apply.mutate()} disabled={apply.isPending}>
+          Run the Inbox through the rules
+        </Button>
+      </div>
+      {apply.error && <ErrorNote error={apply.error} />}
+      {apply.data && (
+        <p className="text-sm text-muted">
+          Filed {apply.data.routed} Inbox record{apply.data.routed === 1 ? '' : 's'}.
+        </p>
+      )}
+      {rules.error && <ErrorNote error={rules.error} />}
+      {rules.data?.items.length === 0 && (
+        <Panel>
+          <Empty>No rules yet.</Empty>
+        </Panel>
+      )}
+      {rules.data && rules.data.items.length > 0 && (
+        <Panel>
+          <ul className="divide-y divide-line">
+            {rules.data.items.map((r) => (
+              <RuleRowView
+                key={`${r.id}:${r.version}`}
+                r={r}
+                slug={slugs.get(r.projectId) ?? '?'}
+              />
+            ))}
+          </ul>
+        </Panel>
+      )}
+      {manageable.length > 0 && (
+        <Panel>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              create.mutate();
+            }}
+          >
+            <h2 className="font-semibold">New rule</h2>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {MATCH_FIELDS.map((f) => (
+                <Field key={f.key} label={f.label} hint={f.hint}>
+                  <input
+                    value={form[f.key]}
+                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                    className={`w-full ${inputClass}`}
+                  />
+                </Field>
+              ))}
+              <Field label="File into">
+                <select
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                  className={`w-full ${inputClass}`}
+                >
+                  {manageable.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      #{p.slug}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            {hasMatch && (
+              <div className="rounded-md border border-line p-3 text-sm">
+                {preview.isPending ? (
+                  <span className="text-muted">Checking the Inbox…</span>
+                ) : preview.error ? (
+                  <ErrorNote error={preview.error} />
+                ) : (
+                  <>
+                    <p className="text-muted">
+                      Matches {preview.data?.total ?? 0} record
+                      {preview.data?.total === 1 ? '' : 's'} in your Inbox now.
+                    </p>
+                    <ul className="mt-1 space-y-0.5">
+                      {preview.data?.matches.slice(0, 8).map((m) => (
+                        <li key={m.id} className="truncate">
+                          <span className="text-muted">{m.applicableDate}</span> {m.title}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+            {create.error && <ErrorNote error={create.error} />}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!hasMatch || !projectId || create.isPending}
+            >
+              Add rule
+            </Button>
+          </form>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+function RuleRowView({ r, slug }: { r: RuleView; slug: string }) {
+  const invalidate = useInvalidate();
+  const [priority, setPriority] = useState(String(r.priority));
+  const save = useMutation({
+    mutationFn: () => api.updateRule(r, { priority: Number(priority) }),
+    onSuccess: () => invalidate('rules'),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.removeRule(r),
+    onSuccess: () => invalidate('rules'),
+  });
+  return (
+    <li className="flex flex-wrap items-center gap-3 py-2 text-sm">
+      <input
+        aria-label="Priority"
+        type="number"
+        value={priority}
+        onChange={(e) => setPriority(e.target.value)}
+        onBlur={() => Number(priority) !== r.priority && save.mutate()}
+        className={`w-20 ${inputClass}`}
+      />
+      <span className="flex-1">
+        {describeMatch(r.match)} → <span className="font-medium">#{slug}</span>
+      </span>
+      <ConfirmButton label="Remove" confirm="Click again" onConfirm={() => remove.mutate()} />
+      {[save.error, remove.error].map((e, i) =>
+        // biome-ignore lint/suspicious/noArrayIndexKey: two fixed slots
+        e ? <ErrorNote key={i} error={e} /> : null,
+      )}
+    </li>
   );
 }
