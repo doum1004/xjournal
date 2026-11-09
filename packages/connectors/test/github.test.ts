@@ -208,23 +208,55 @@ describe('github events stream', () => {
     });
     expect(byId['acme/sdk@c1']).toMatchObject({
       actor: 'octocat',
-      eventTime: '2026-11-05T09:00:00Z',
+      eventTime: '2026-11-05T15:00:00Z', // the push, not the author date
     });
 
     // The push to main never hit the API; the newest event is the cursor.
     expect(f.seen.some((s) => s.includes('/compare/bbb'))).toBe(false);
-    expect(page.cursor).toEqual({ lastEventId: events[0]?.id as string });
+    expect(page.cursor).toEqual({ since: '2026-11-05T15:00:00.000Z' }); // the newest event
     expect(page.more).toBe(false);
     // The feed reached the backfill start, so it isn't truncated.
     expect(page.historyFloor).toBeUndefined();
   });
 
-  test('with a cursor, only newer events are read', async () => {
+  test('with a cursor, events from an hour before it on are read', async () => {
     const f = fakeFetch(routes);
-    const cursor: Cursor = { lastEventId: events[3]?.id as string };
-    const page = await github.sync(input(f, { cursor }));
-    expect(page.records.map((r) => r.externalId).sort()).toEqual(['acme/sdk@c1', 'acme/sdk@s1']);
-    expect(page.cursor).toEqual({ lastEventId: events[0]?.id as string });
+    const page = await github.sync(input(f, { cursor: { since: '2026-11-04T00:30:00Z' } }));
+    const ids = page.records.map((r) => r.externalId);
+    expect(ids).not.toContain('acme/sdk#5/opened'); // 2026-11-03
+    expect(ids).toContain('acme/sdk#5/merged');
+  });
+
+  test('event IDs are not in time order: a lower ID can be newer', async () => {
+    // Pushes and PR events have separate ID ranges (seen on github.com).
+    const feed = [
+      {
+        ...ev(
+          'PushEvent',
+          'acme/sdk',
+          { ref: 'refs/heads/x', commits: [] },
+          '2026-11-05T22:00:00Z',
+        ),
+        id: '26422486192',
+      },
+      {
+        ...ev(
+          'PullRequestEvent',
+          'acme/sdk',
+          { action: 'merged', number: 9, pull_request: { number: 9, title: 'Nine' } },
+          '2026-11-06T05:00:00Z',
+        ),
+        id: '19303263554',
+      },
+    ];
+    const f = fakeFetch({
+      '/users/octocat/events': (u) => (u.searchParams.get('page') === '1' ? feed : []),
+    });
+    const page = await github.sync(input(f, { cursor: { since: '2026-11-05T21:00:00Z' } }));
+    expect(page.records.map((r) => [r.externalId, r.eventTime])).toEqual([
+      ['acme/sdk#9/merged', '2026-11-06T05:00:00Z'], // newer payloads: action 'merged', no merged_at
+    ]);
+    expect(page.cursor).toEqual({ since: '2026-11-06T05:00:00.000Z' });
   });
 
   test('a feed that runs out before the backfill start reports a history floor', async () => {
@@ -239,8 +271,8 @@ describe('github events stream', () => {
 
   test('a quiet feed keeps the old cursor', async () => {
     const f = fakeFetch({ '/users/octocat/events': () => [] });
-    const page = await github.sync(input(f, { cursor: { lastEventId: '5' } }));
-    expect(page).toMatchObject({ records: [], cursor: { lastEventId: '5' } });
+    const page = await github.sync(input(f, { cursor: { since: '2026-11-05T00:00:00Z' } }));
+    expect(page).toMatchObject({ records: [], cursor: { since: '2026-11-05T00:00:00Z' } });
   });
 });
 

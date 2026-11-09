@@ -199,35 +199,38 @@ interface GhEvent {
   payload: Json;
 }
 
-/** Event IDs are increasing decimal strings. */
-const newer = (a: string, b: string) => BigInt(a) > BigInt(b);
+// The feed is neither ID- nor strictly time-ordered (each event type has its own ID range),
+// so it's read whole (at most 300 events) and filtered by time; records dedupe the overlap.
+const RESYNC_SLACK_MS = 60 * 60 * 1000;
+const HISTORY_DAYS = 90;
 
 async function syncEvents(input: SyncInput<GithubConfig>): Promise<SyncPage> {
   const { config } = input;
   const gh = new Gh(input);
   const pull = pullCache(gh);
   const isMine = mineMatcher(input);
-  const prior = input.cursor as { lastEventId?: string } | null;
-  const lastId = prior?.lastEventId;
-  // Without a cursor: from the start of the backfill day, with a day of slack for time zones.
-  const from = new Date(`${addDaysIso(input.backfillFrom, -1)}T00:00:00Z`);
+  const prior = input.cursor as { since?: string } | null;
+  // From an hour before the newest event seen last time; without one, from the start of the
+  // backfill day with a day of slack for time zones.
+  const from = prior?.since
+    ? new Date(Date.parse(prior.since) - RESYNC_SLACK_MS)
+    : new Date(`${addDaysIso(input.backfillFrom, -1)}T00:00:00Z`);
 
-  const events: GhEvent[] = [];
-  let reachedKnown = false;
+  const all: GhEvent[] = [];
   let exhausted = false;
   for (let page = 1; page <= EVENT_PAGES; page++) {
     const batch = await gh.get<GhEvent[]>(`/users/${encodeURIComponent(config.login)}/events`, {
       per_page: 100,
       page,
     });
-    for (const ev of batch) {
-      if (lastId && !newer(ev.id, lastId)) reachedKnown = true;
-      else if (!lastId && new Date(ev.created_at) < from) reachedKnown = true;
-      else events.push(ev);
+    all.push(...batch);
+    if (batch.length < 100) {
+      exhausted = true;
+      break;
     }
-    if (batch.length < 100) exhausted = true;
-    if (reachedKnown || exhausted) break;
   }
+  const time = (e: GhEvent) => Date.parse(e.created_at);
+  const events = all.filter((e) => time(e) >= from.getTime());
 
   const records: RecordInput[] = [];
   for (const ev of events) {
@@ -240,7 +243,8 @@ async function syncEvents(input: SyncInput<GithubConfig>): Promise<SyncPage> {
       case 'PullRequestEvent': {
         const pr = (p.pull_request ?? {}) as Json;
         const num = Number(p.number ?? pr.number);
-        const merged = p.action === 'closed' && pr.merged === true;
+        // Newer payloads say 'merged'; older ones 'closed' with `merged: true`.
+        const merged = p.action === 'merged' || (p.action === 'closed' && pr.merged === true);
         const action = merged ? 'merged' : p.action;
         if (action !== 'opened' && action !== 'merged') break;
         const title = (pr.title as string) || (await pull(repo, num))?.title || '';
@@ -307,7 +311,9 @@ async function syncEvents(input: SyncInput<GithubConfig>): Promise<SyncPage> {
           records.push({
             externalId: `${repo}@${c.sha}`,
             kind: 'commit',
-            eventTime: c.date || ev.created_at,
+            // The day it was pushed, as the prototype counted it: rebases and cherry-picks
+            // keep old author dates.
+            eventTime: ev.created_at,
             title: clip(message, 300),
             url: `${web(config)}/${repo}/commit/${c.sha}`,
             actor: c.login || c.email || c.name || actor,
@@ -321,17 +327,16 @@ async function syncEvents(input: SyncInput<GithubConfig>): Promise<SyncPage> {
 
   // Dedupe within the page (a commit pushed to two branches, a PR in two events).
   const byId = new Map(records.map((r) => [r.externalId, r]));
-  const newest = events.reduce<string | undefined>(
-    (m, e) => (m === undefined || newer(e.id, m) ? e.id : m),
-    lastId,
-  );
-  const oldest = events.at(-1);
-  // The feed ran out before reaching what we already had, or the backfill start: it holds
-  // nothing older than its last event.
-  const truncated = !reachedKnown && oldest ? new Date(oldest.created_at) : undefined;
+  const times = all.map(time);
+  const newest = times.length ? new Date(Math.max(...times)).toISOString() : prior?.since;
+  const oldest = times.length ? Math.min(...times) : null;
+  // The feed doesn't reach back to `from`: it was cut at 300 events, or `from` is past the
+  // ~90 days GitHub keeps.
+  const cut = !exhausted || from.getTime() < input.now.getTime() - HISTORY_DAYS * 86_400_000;
+  const truncated = oldest != null && oldest > from.getTime() && cut ? new Date(oldest) : undefined;
   return {
     records: [...byId.values()],
-    cursor: newest ? { lastEventId: newest } : (input.cursor ?? null),
+    cursor: newest ? { since: newest } : (input.cursor ?? null),
     more: false,
     ...(truncated ? { historyFloor: truncated } : {}),
   };
