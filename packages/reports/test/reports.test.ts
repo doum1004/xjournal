@@ -99,6 +99,8 @@ describe('validateReport', () => {
       '- Broken [[r:]]',
       '- Bad version [[v:V1#nope]]',
       '- Fine: PIX-1234, #215, v1.2 and 2026-11-04 [[r:R1]]',
+      '- Fine too: the 2026.6 release shipped [[r:R1]]',
+      '- Merged 1,200 commits [[r:R1]]',
     ].join('\n');
     const r = validateReport(body, known());
     expect(r.ok).toBe(false);
@@ -112,6 +114,7 @@ describe('validateReport', () => {
       ['malformed_ref', 'Broken [[r:]]'],
       ['unreferenced_statement', 'Broken [[r:]]'],
       ['unknown_ref', 'Bad version'],
+      ['number_without_stat', 'Merged 1,200 commits'],
     ]);
     expect(r.errors.every((e) => e.hint.length > 10 && e.anchor && e.line)).toBe(true);
   });

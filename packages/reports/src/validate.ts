@@ -46,10 +46,10 @@ export interface ValidationResult {
   refs: { anchor: string; citation: Citation }[];
 }
 
-// A count or total: "3 PRs", "12 merged PRs", "five"... digits only, so IDs like PIX-123,
-// #215 and versions (v1.2) don't trip it.
+// A count or total: "3 PRs", "12 merged PRs", "1,200 commits"... digits only, so IDs like
+// PIX-123, #215 and versions (v1.2, "the 2026.6 release") don't trip it.
 const COUNT_RE =
-  /(?<![\w#./:-])\d{1,6}(?:[.,]\d+)?\s+(?:[a-z]+\s+){0,2}(?:prs?|pull requests?|commits?|issues?|tickets?|reviews?|comments?|pages?|meetings?|bugs?|tests?|merges?|files?|releases?|changes?|tasks?|days?)\b/i;
+  /(?<![\w#./:-])\d{1,6}(?:,\d{3})*(?![\d.,]*\d)\s+(?:[a-z]+\s+){0,2}(?:prs?|pull requests?|commits?|issues?|tickets?|reviews?|comments?|pages?|meetings?|bugs?|tests?|merges?|files?|releases?|changes?|tasks?|days?)\b/i;
 
 const isTldr = (st: Statement) =>
   /^(\*\*)?tl;?dr\b/i.test(st.text) || (st.section != null && /^tl;?dr$/i.test(st.section));
