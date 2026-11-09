@@ -1,0 +1,14 @@
+{
+  "name": "@xjournal/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Domain types, Zod schemas, period and time-zone logic",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "ulid": "3.0.2",
+    "zod": "4.6.7"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@xjournal/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Drizzle schema, migrations, RLS policies, PGlite test harness",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts",
+    "./schema": "./src/schema/index.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.4.6",
+    "@xjournal/core": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate --name",
+    "generate:custom": "drizzle-kit generate --custom --name"
+  }
+}

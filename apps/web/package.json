@@ -1,0 +1,10 @@
+{
+  "name": "@xjournal/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "React + Vite SPA (M1)",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

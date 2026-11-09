@@ -1,0 +1,10 @@
+{
+  "name": "@xjournal/services",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Service layer (api.md §3) with authorization",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
