@@ -4,7 +4,7 @@ import { zRecordKind } from './schemas';
 // Project assignment rules (spec §8.4). A rule's `match` is a set of conditions that must all
 // hold; `*` in a pattern matches any run of characters, and patterns ignore case. The fields
 // read the record's source key, kind, title and the payload keys the built-in connectors set:
-// `repo` (GitHub), `project` (Jira), `space` (Confluence).
+// `repo` (GitHub), `project` (Jira), `space` (Confluence), `channel` (Slack, no "#").
 
 const zPattern = z.string().trim().min(1).max(200);
 
@@ -14,6 +14,7 @@ export const zRuleMatch = z
     repo: zPattern.optional(),
     project: zPattern.optional(),
     space: zPattern.optional(),
+    channel: zPattern.optional(),
     kinds: z.array(zRecordKind).min(1).optional(),
     titleContains: z.string().trim().min(1).max(200).optional(),
   })
@@ -57,6 +58,7 @@ export function ruleMatches(m: RuleMatch, r: RuleSubject): boolean {
     test(m.repo, field('repo')) &&
     test(m.project, field('project')) &&
     test(m.space, field('space')) &&
+    test(m.channel?.replace(/^#/, ''), field('channel')) &&
     (m.kinds === undefined || m.kinds.includes(r.kind as never)) &&
     (m.titleContains === undefined || r.title.toLowerCase().includes(m.titleContains.toLowerCase()))
   );

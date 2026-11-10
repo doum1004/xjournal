@@ -214,7 +214,7 @@ Connectors and identities belong to the user who connected them and are never sh
 | Rule preview | `POST /rules/preview` `{match}` → `{matches, total}`: the Inbox records it would move | signed in | |
 | Apply rules | `POST /rules/apply` → `{routed, byProject}`: files matching Inbox records (`routed_by = 'rule'`) | owner of the records | |
 
-`match` (spec §8.4): any of `source`, `repo` (GitHub), `project` (Jira), `space` (Confluence) as patterns with `*`, ignoring case; `kinds: RecordKind[]`; `titleContains`. All given conditions must hold; the lowest priority matching rule wins. Connector syncs apply rules to new records ahead of the account's own project.
+`match` (spec §8.4): any of `source`, `repo` (GitHub), `project` (Jira), `space` (Confluence), `channel` (Slack, without `#`) as patterns with `*`, ignoring case; `kinds: RecordKind[]`; `titleContains`. All given conditions must hold; the lowest priority matching rule wins. Connector syncs apply rules to new records ahead of the account's own project.
 
 ### 3.9 Jobs and audit
 

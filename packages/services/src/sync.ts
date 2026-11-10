@@ -101,6 +101,8 @@ export async function syncConnector(
     warnings: [],
   };
   let secret: string | null = null;
+  // Every credential this sync has held, so a rotated one is redacted from errors too.
+  const seen: (string | null)[] = [];
 
   const finish = async (status: 'ok' | 'error') => {
     result.status = status;
@@ -117,6 +119,7 @@ export async function syncConnector(
     const config = connector.parseConfig(connectorConfigOf(account.config));
     if (account.secretRef) {
       secret = await deps.secrets.get(account.secretRef);
+      seen.push(...secretParts(secret));
       if (secret == null) {
         throw new ConnectorAuthError('The credential is missing from the secret store; reconnect');
       }
@@ -168,6 +171,11 @@ export async function syncConnector(
       },
     };
     const key = { connectorAccountId: account.id, workspaceId: ctx.actor.workspaceId };
+    const saveSecret = (ref: string) => async (value: string) => {
+      await deps.secrets.set(ref, value);
+      secret = value;
+      seen.push(...secretParts(value));
+    };
 
     let authFailed = false;
     for (const stream of streams) {
@@ -210,6 +218,7 @@ export async function syncConnector(
             fetch: deps.fetch ?? fetch,
             log,
             ...(opts.signal ? { signal: opts.signal } : {}),
+            ...(account.secretRef ? { saveSecret: saveSecret(account.secretRef) } : {}),
           });
           sr.pages++;
           const valid = validateRecords(page.records, 'builtin', sr);
@@ -238,7 +247,7 @@ export async function syncConnector(
         );
       } catch (e) {
         // Keep credentials out of the database and logs, even if the source echoed them.
-        sr.error = redact(messageOf(e), [secret]);
+        sr.error = redact(messageOf(e), seen);
         if (e instanceof ConnectorAuthError) authFailed = true;
         log.warn('sync stream failed', { source: account.source, stream, error: sr.error });
         await asCaller(ctx, (tx) =>
@@ -252,6 +261,18 @@ export async function syncConnector(
     await finish('error');
     if (e instanceof ServiceError) throw e;
     // A refused source credential is not the hub caller's auth failing, so never a 401.
-    throw new ServiceError(400, 'bad_request', redact(messageOf(e), [secret]));
+    throw new ServiceError(400, 'bad_request', redact(messageOf(e), seen));
   }
+}
+
+/** A secret and, for a JSON credential (OAuth), each of its values, for redaction. */
+function secretParts(secret: string | null): string[] {
+  if (!secret) return [];
+  try {
+    const v: unknown = JSON.parse(secret);
+    if (v && typeof v === 'object') {
+      return [secret, ...Object.values(v).filter((x): x is string => typeof x === 'string')];
+    }
+  } catch {}
+  return [secret];
 }

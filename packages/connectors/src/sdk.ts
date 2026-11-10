@@ -1,4 +1,5 @@
 import type { RecordInput } from '@xjournal/core';
+import type { OAuthProvider } from './oauth';
 
 // The connector SDK (spec §8.1, §8.8 tier 5). A connector is plain code with no database
 // access: given its config, credential and the stored cursor for one stream, it returns a
@@ -29,6 +30,8 @@ export interface ConnectorDescription {
     /** The source keeps no history older than this, e.g. GitHub events (~90 days). */
     historyLimitDays?: number;
   };
+  /** For OAuth sources: how to sign in and refresh (see oauth.ts). */
+  oauth?: OAuthProvider;
 }
 
 export interface SyncLog {
@@ -51,6 +54,11 @@ export interface SyncInput<C> {
   fetch: typeof fetch;
   log: SyncLog;
   signal?: AbortSignal;
+  /**
+   * Replace the stored credential now, e.g. after an OAuth refresh that rotated the refresh
+   * token. Later pages of this sync get the new value as `secret`.
+   */
+  saveSecret?: (secret: string) => Promise<void>;
 }
 
 export interface SyncPage {

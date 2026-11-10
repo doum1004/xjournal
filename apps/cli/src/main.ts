@@ -15,6 +15,7 @@ import type { RecordView } from '@xjournal/core';
 import { connectPostgres, type DbHandle, migrate, migrationStatus } from '@xjournal/db';
 import { osKeychain } from '@xjournal/secrets';
 import * as svc from '@xjournal/services';
+import { oauthLogin } from './oauth-login';
 
 // `hub` CLI (plan.md §1). It runs the service layer in-process against DATABASE_URL, as the
 // local owner, so it works whether or not the server is running.
@@ -46,6 +47,9 @@ Connectors:
                                      reads it from stdin; it goes to the OS keychain.
                                      --from: how far back the first sync reaches.
                                      --token-from-gh: take the token from the GitHub CLI.
+                                     --oauth FILE: sign in in the browser with your OAuth
+                                     app's client file (gcal, zoom); its redirect URL is
+                                     http://localhost:8765/callback (--redirect-port N).
                                      e.g. connector add github --project work --from 2023-01-01
                                           --config '{"host":"github.com","login":"octocat",
                                                      "includeOwners":["acme"]}' --token-from-gh
@@ -264,6 +268,8 @@ const commands: Record<string, Handler> = {
           config: { type: 'string' },
           from: { type: 'string' },
           'token-from-gh': { type: 'boolean' },
+          oauth: { type: 'string' },
+          'redirect-port': { type: 'string' },
         },
       });
       const kind = positionals[0];
@@ -298,6 +304,15 @@ const commands: Record<string, Handler> = {
           return 1;
         }
         secret = ghToken(cfg.host, cfg.login);
+      } else if (values.oauth) {
+        if (!desc.oauth?.authUrl) {
+          console.error(`${kind} has no OAuth sign-in; paste its token instead`);
+          return 1;
+        }
+        // Validate the config before sending the user to the browser.
+        deps.registry.get(kind)?.parseConfig(config);
+        const port = Number(values['redirect-port'] ?? 8765);
+        secret = await oauthLogin(desc.oauth, values.oauth, port);
       } else if (!desc.authTypes.includes('none')) {
         secret = await readSecret('Token');
       }

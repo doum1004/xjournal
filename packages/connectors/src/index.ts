@@ -29,6 +29,15 @@ export {
   storageToText,
 } from './confluence-worklog';
 export {
+  cleanDescription,
+  eventRecord,
+  type GcalConfig,
+  type GcalEvent,
+  GOOGLE,
+  gcal,
+  zGcalConfig,
+} from './gcal';
+export {
   apiBase,
   type GithubConfig,
   github,
@@ -36,7 +45,19 @@ export {
   ownerAllowed,
   zGithubConfig,
 } from './github';
+export { HttpError, requestJson } from './http';
 export { issueRecords, type JiraConfig, jira, jqlFor, zJiraConfig } from './jira';
+export {
+  authorizeUrl,
+  exchangeCode,
+  type OAuthClient,
+  type OAuthProvider,
+  type OAuthSecret,
+  oauthToken,
+  parseOAuthClient,
+  parseOAuthSecret,
+  pkcePair,
+} from './oauth';
 export {
   type AnyConnector,
   type AuthType,
@@ -54,6 +75,16 @@ export {
   type SyncPage,
 } from './sdk';
 export {
+  channelAllowed,
+  isNoise,
+  messageRecord,
+  permalink,
+  readable,
+  type SlackConfig,
+  slack,
+  zSlackConfig,
+} from './slack';
+export {
   dayLogInput,
   type ParsedReview,
   parseDailyLog,
@@ -63,3 +94,12 @@ export {
   type WorklogRecord,
   type WorklogScan,
 } from './worklog';
+export {
+  summaryRecord,
+  uuidPath,
+  ZOOM,
+  type ZoomConfig,
+  type ZoomSummary,
+  zoom,
+  zZoomConfig,
+} from './zoom';

@@ -361,6 +361,86 @@ const FORMS: Record<string, FieldSpec[]> = {
       kind: 'checkbox',
     },
   ],
+  slack: [
+    {
+      key: 'workspace',
+      label: 'Workspace',
+      kind: 'text',
+      required: true,
+      identity: true,
+      placeholder: 'acme.slack.com',
+    },
+    {
+      key: 'userId',
+      label: 'Member ID',
+      kind: 'text',
+      required: true,
+      placeholder: 'U0123ABCD',
+      hint: 'Your profile → ⋮ → Copy member ID',
+    },
+    {
+      key: 'skipChannels',
+      label: 'Skip channels',
+      kind: 'list',
+      placeholder: 'random, private-*',
+      hint: 'Names without #; * matches anything',
+    },
+    {
+      key: 'onlyChannels',
+      label: 'Only these channels',
+      kind: 'list',
+      hint: 'Empty: every channel you are in',
+    },
+    { key: 'includeDms', label: 'Include direct messages', kind: 'checkbox' },
+  ],
+  gcal: [
+    {
+      key: 'account',
+      label: 'Google account',
+      kind: 'text',
+      required: true,
+      identity: true,
+      placeholder: 'you@example.com',
+    },
+    {
+      key: 'calendarId',
+      label: 'Calendar',
+      kind: 'text',
+      identity: true,
+      initial: 'primary',
+    },
+    {
+      key: 'includeDescription',
+      label: 'Keep a short description (no links or join details)',
+      kind: 'checkbox',
+      initial: 'true',
+    },
+  ],
+  zoom: [
+    {
+      key: 'email',
+      label: 'Zoom account',
+      kind: 'text',
+      required: true,
+      identity: true,
+      placeholder: 'you@example.com',
+    },
+    {
+      key: 'user',
+      label: 'User',
+      kind: 'text',
+      initial: 'me',
+      hint: 'me, or your email for a Server-to-Server app',
+    },
+  ],
+};
+
+const TOKEN_HINTS: Record<string, string> = {
+  github: 'A read-only personal access token for this host.',
+  slack:
+    "Your Slack app's User OAuth Token (xoxp-…), with the channels and groups read and history scopes.",
+  gcal: 'The credential JSON: sign in with `hub connector add gcal --oauth client.json`, or paste {"client_id", "client_secret", "refresh_token"}.',
+  zoom: 'The credential JSON: sign in with `hub connector add zoom --oauth client.json`, or paste {"client_id", "client_secret", "refresh_token"} (or "account_id" for a Server-to-Server app).',
 };
 
 type FormValues = Record<string, string>;
@@ -576,11 +656,7 @@ function AddConnector({ kinds, onDone }: { kinds: ConnectorKindView[]; onDone: (
         {needsSecret && (
           <Field
             label="Token"
-            hint={
-              kind === 'github'
-                ? 'A read-only personal access token for this host. Stored in the OS keychain and never shown again.'
-                : 'Stored in the OS keychain and never shown again.'
-            }
+            hint={`${TOKEN_HINTS[kind] ?? ''} Stored in the OS keychain and never shown again.`.trim()}
           >
             <input
               type="password"
@@ -1244,7 +1320,7 @@ function Identities() {
 // ------------------------------------------------------------------------------------------
 
 const MATCH_FIELDS: {
-  key: 'source' | 'repo' | 'project' | 'space' | 'titleContains';
+  key: 'source' | 'repo' | 'project' | 'space' | 'channel' | 'titleContains';
   label: string;
   hint: string;
 }[] = [
@@ -1252,11 +1328,19 @@ const MATCH_FIELDS: {
   { key: 'repo', label: 'GitHub repo', hint: 'e.g. acme/cli or acme/*' },
   { key: 'project', label: 'Jira project', hint: 'e.g. PROJ' },
   { key: 'space', label: 'Confluence space', hint: 'e.g. ENG' },
+  { key: 'channel', label: 'Slack channel', hint: 'e.g. support-* (no #)' },
   { key: 'titleContains', label: 'Title contains', hint: 'Plain text, any case' },
 ];
 
 type MatchForm = Record<(typeof MATCH_FIELDS)[number]['key'], string>;
-const emptyMatch: MatchForm = { source: '', repo: '', project: '', space: '', titleContains: '' };
+const emptyMatch: MatchForm = {
+  source: '',
+  repo: '',
+  project: '',
+  space: '',
+  channel: '',
+  titleContains: '',
+};
 
 const matchOf = (f: MatchForm): RuleMatch =>
   Object.fromEntries(

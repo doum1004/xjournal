@@ -59,6 +59,15 @@ describe('matching', () => {
     expect(ruleMatches({ source: 'jira:*' }, r)).toBe(false);
     expect(ruleMatches({ titleContains: 'cli' }, r)).toBe(true);
     expect(ruleMatches({ project: 'PIX' }, r)).toBe(false); // no such payload field
+    const msg = {
+      source: 'slack:acme.slack.com',
+      kind: 'message',
+      title: 'Posted in #support-cli',
+      payload: { channel: 'support-cli' },
+    };
+    expect(ruleMatches({ channel: 'support-*' }, msg)).toBe(true);
+    expect(ruleMatches({ channel: '#support-*' }, msg)).toBe(true);
+    expect(ruleMatches({ channel: 'dev' }, msg)).toBe(false);
   });
 });
 

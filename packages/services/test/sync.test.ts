@@ -270,6 +270,41 @@ describe('syncConnector', () => {
     expect(view?.status).toBe('error');
   });
 
+  test('a rotated credential is stored at once, used by later pages and redacted', async () => {
+    const old = JSON.stringify({ client_id: 'ci', client_secret: 'cs', refresh_token: 'rt_old_1' });
+    const rotated = JSON.stringify({
+      client_id: 'ci',
+      client_secret: 'cs',
+      refresh_token: 'rt_new_2',
+      access_token: 'at_new_2',
+    });
+    const fake = fakeConnector(
+      {
+        // Page 1 rotates the credential; page 2 sees it, then fails echoing a part of it.
+        events: async ({ cursor, secret, saveSecret }) => {
+          if (cursor === null) {
+            await saveSecret?.(rotated);
+            return { records: [item(1)], cursor: 1, more: true };
+          }
+          expect(secret).toBe(rotated);
+          throw new Error('POST /token failed for rt_new_2 and at_new_2 (was rt_old_1)');
+        },
+      },
+      { kind: 'rotating' },
+    );
+    const secrets = memorySecrets();
+    const deps: ConnectorDeps = { registry: new ConnectorRegistry([fake]), secrets };
+    const c = await addConnector(ctx('alice'), deps, { kind: 'rotating', secret: old });
+
+    const r = await syncConnector(ctx('alice'), deps, c.id, { now: NOW });
+    expect(r.streams[0]?.created).toBe(1);
+    expect(r.streams[0]?.error).toBe(
+      'POST /token failed for [redacted] and [redacted] (was [redacted])',
+    );
+    // The page failed, but the rotated credential was kept.
+    expect(Object.values(secrets.entries())).toEqual([rotated]);
+  });
+
   test('a refused credential stops the remaining streams', async () => {
     const fake = fakeConnector(
       {
