@@ -51,8 +51,12 @@ export async function toViews(tx: Tx, ctx: Ctx, rows: RecordRow[]): Promise<Reco
   const tags = await recordRepo.tagsFor(tx, ids);
   const names = await projectRepo.displayNames(tx, [...new Set(rows.map((r) => r.ownerUserId))]);
   const items = new Map<string, string[]>();
+  const guesses = new Map<string, Record<string, number>>();
   for (const l of await workItemRepo.linksOf(tx, ids)) {
     items.set(l.recordId, [...(items.get(l.recordId) ?? []), l.workItemId]);
+    if (l.origin === 'ai') {
+      guesses.set(l.recordId, { ...guesses.get(l.recordId), [l.workItemId]: l.confidence ?? 0 });
+    }
   }
   return rows.map((r) => ({
     id: r.id,
@@ -77,6 +81,7 @@ export async function toViews(tx: Tx, ctx: Ctx, rows: RecordRow[]): Promise<Reco
     visibility: r.visibility,
     hidden: r.hiddenAt != null,
     workItemIds: (items.get(r.id) ?? []).sort(),
+    ...(guesses.has(r.id) ? { suggestedWorkItems: guesses.get(r.id) } : {}),
   }));
 }
 

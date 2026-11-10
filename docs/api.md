@@ -74,6 +74,8 @@ interface RecordView {
   owner: { id: Id; name: string }; isMine: boolean;
   visibility: Visibility; hidden: boolean;
   workItemIds: Id[];
+  suggestedWorkItems?: Record<Id, number>;   // items in workItemIds by the model's guess only,
+                                             // with its confidence (ADR 0009); reports mark them
 }
 
 interface Coverage {              // per connector, for a day or a period (spec §5.9)
@@ -243,7 +245,8 @@ interface ReportInputs {
               unlinked: RecordView[] }[];
   // weekly, bi-weekly and monthly: the work items with records in the period (ADR 0008)
   workItems?: { id: Id; key: string | null; title: string; url: string | null;
-                days: IsoDate[]; kinds: Record<string, number> }[];
+                days: IsoDate[]; kinds: Record<string, number>;
+                suggested?: number }[];        // records in the item by guess only (ADR 0009)
   // weekly and up: the constituent reports (spec §5): daily for weekly and monthly, weekly for
   // bi-weekly, monthly for quarterly and yearly
   inputReports?: { versionId: Id; kind: ReportKind; period: {...}; bodyMd: string; status: string }[];

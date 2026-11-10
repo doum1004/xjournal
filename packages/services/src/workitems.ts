@@ -61,8 +61,8 @@ const JIRA_BROWSE = /\/browse\/([A-Z][A-Z0-9]{1,9}-[1-9]\d{0,6})\b/g;
 const PR_URL = /https?:\/\/[^\s/<>()]+\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/g;
 
 /** Records that summarize many pieces of work, which text links would wrongly join. */
-const SKIP_KINDS = new Set(['imported_log']);
-const SKIP_NOTE_KINDS = new Set(['context', 'guidance']);
+export const SKIP_KINDS = new Set(['imported_log']);
+export const SKIP_NOTE_KINDS = new Set(['context', 'guidance']);
 /** A record that mentions more anchors than this is a roundup: no text links from it. */
 export const MAX_TEXT_ANCHORS = 3;
 
@@ -223,6 +223,8 @@ export interface RelinkSummary {
   created: number;
   linksAdded: number;
   linksRemoved: number;
+  /** AI guesses superseded by a rule link (docs/adr/0009). */
+  guessesDropped: number;
 }
 
 /**
@@ -242,6 +244,7 @@ export async function relinkWorkItems(
     created: 0,
     linksAdded: 0,
     linksRemoved: 0,
+    guessesDropped: 0,
   };
   for (const p of projects) {
     const r = await withSystem(db, async (tx) =>
@@ -256,6 +259,7 @@ export async function relinkWorkItems(
     summary.created += r.created;
     summary.linksAdded += r.linksAdded;
     summary.linksRemoved += r.linksRemoved;
+    summary.guessesDropped += r.guessesDropped;
   }
   return summary;
 }
@@ -305,6 +309,7 @@ export function summarize(groups: WorkItemGroup[]): WorkItemSummary[] {
   return groups.map((g) => {
     const kinds: Record<string, number> = {};
     for (const r of g.records) kinds[r.kind] = (kinds[r.kind] ?? 0) + 1;
+    const suggested = g.records.filter((r) => r.suggestedWorkItems?.[g.id] != null).length;
     return {
       id: g.id,
       key: g.key,
@@ -312,6 +317,7 @@ export function summarize(groups: WorkItemGroup[]): WorkItemSummary[] {
       url: g.url,
       days: [...new Set(g.records.map((r) => r.applicableDate))].sort(),
       kinds,
+      ...(suggested ? { suggested } : {}),
     };
   });
 }

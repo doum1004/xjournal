@@ -108,7 +108,7 @@ describe('daily report', () => {
       'Shipped the release',
     ]);
     expect(i.bundles?.[0]?.hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(i.template.version).toBe('daily@2');
+    expect(i.template.version).toBe('daily@3');
     expect(i.stats.find((x) => x.metric === 'notes')?.value).toBe(2);
     expect(i.refFormat).toContain('[[r:');
     expect(i.inputHash).toMatch(/^[0-9a-f]{64}$/);

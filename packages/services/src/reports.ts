@@ -390,7 +390,18 @@ async function buildInputs(tx: Tx, ctx: Ctx, report: ReportRow, now: Date): Prom
     revisions: [...known.revisions.keys()].sort(),
     // How those revisions group into work items: a relink changes what may be cited.
     workItems: grouped.workItems
-      .map((g) => [g.id, g.records.map((r) => r.revisionId).sort()] as const)
+      .map(
+        (g) =>
+          [
+            g.id,
+            g.records
+              // A guess is marked in the report, so becoming one (or a rule link) changes it.
+              .map((r) =>
+                r.suggestedWorkItems?.[g.id] != null ? `${r.revisionId}?` : r.revisionId,
+              )
+              .sort(),
+          ] as const,
+      )
       .sort(([a], [b]) => a.localeCompare(b)),
   });
   return { inputs, known, inputRows, guidanceHash, statRows, previous };

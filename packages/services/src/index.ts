@@ -106,6 +106,15 @@ export {
 } from './settings';
 export { getStatus, type StatusOptions } from './status';
 export {
+  LINK_MODEL,
+  MIN_CONFIDENCE,
+  parseSuggestions,
+  type SuggestDeps,
+  type SuggestSummary,
+  suggestPrompt,
+  suggestWorkItemLinks,
+} from './suggest';
+export {
   DEFAULT_BACKFILL_DAYS,
   type StreamSyncResult,
   type SyncOptions,

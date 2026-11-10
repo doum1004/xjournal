@@ -420,6 +420,15 @@ create table work_item_links (
 );
 create index work_item_links_record_idx on work_item_links (record_id);
 
+-- Records the model has been asked to place in a work item, at the revision it saw
+-- (docs/adr/0009). System only: hub_app has no grant.
+create table work_item_ai_checks (
+  record_id        text primary key references records(id),
+  workspace_id     text not null,
+  revision_id      text not null,
+  checked_at       timestamptz not null default now()
+);
+
 -- One bundle per project and date; rebuilt whenever its inputs change.
 create table daily_bundles (
   id               text primary key,
@@ -441,7 +450,7 @@ create table bundle_items (
 );
 ```
 
-**Work items** (docs/adr/0008) are rebuilt by a system job (`relinkWorkItems`): in the morning run before the bundles, and before report inputs are assembled. It replaces only `origin = 'rule'` links. `hub_app` only reads them: a link is visible when its record is, and an item when the caller is a project member who can see at least one of its links. The grouping isn't part of a bundle's hash.
+**Work items** (docs/adr/0008) are rebuilt by a system job (`relinkWorkItems`): in the morning run before the bundles, and before report inputs are assembled. It replaces only `origin = 'rule'` links, and drops `origin = 'ai'` guesses about records a rule now links. AI suggestions (docs/adr/0009) are added after it in the morning run, for unlinked records not yet asked about at their current revision. `hub_app` only reads them: a link is visible when its record is, and an item when the caller is a project member who can see at least one of its links. The grouping isn't part of a bundle's hash.
 
 A bundle covers **every** record of its project and date, regardless of visibility. Visibility is applied when a report's inputs are chosen for its audience (§7).
 

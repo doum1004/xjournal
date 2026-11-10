@@ -43,6 +43,7 @@ Rules that always apply:
 - Every bullet and paragraph ends with at least one citation token of the evidence it states, copied exactly from the inputs: [[r:<id>]] for a record, [[v:<versionId>#<anchor>]] for a statement of an input report, [[s:<metric>]] for a number. A lead-in bullet ending in ":" needs none if every bullet under it has one; the TL;DR line needs none.
 - Numbers that count things come only from the stats, with their [[s:…]] token. Otherwise write no count.
 - Group related evidence into one bullet per piece of work rather than one bullet per event, and cite all of it.
+- A record marked "(suggested link)" was placed in its work item by a guess, not by an explicit reference. When you describe it as part of that work, write "(suggested link)" right after its citation; when the guess doesn't fit, describe it on its own.
 - Follow the template's sections and instructions, and the guidance, which takes precedence over the template.
 - Output only the report's Markdown: no preamble, no code fences, no front matter.`;
 
@@ -72,7 +73,14 @@ function renderInputs(i: ReportInputs, instructions?: string): string {
     };
     for (const w of b.workItems) {
       out.push('', `### Work item [[w:${w.id}]] ${w.title}${w.url ? ` <${w.url}>` : ''}`);
-      for (const r of w.records) out.push(line(r));
+      for (const r of w.records) {
+        const guess = r.suggestedWorkItems?.[w.id];
+        out.push(
+          guess == null
+            ? line(r)
+            : `${line(r)} (suggested link, ${Math.round(guess * 100)}% confident)`,
+        );
+      }
     }
     if (b.workItems.length && b.unlinked.length) out.push('', '### Other records');
     for (const r of b.unlinked) out.push(line(r));
@@ -90,7 +98,7 @@ function renderInputs(i: ReportInputs, instructions?: string): string {
         .map(([k, n]) => `${n} ${k}`)
         .join(', ');
       out.push(
-        `- [[w:${w.id}]] ${w.title}${w.url ? ` <${w.url}>` : ''} — ${w.days.join(', ')}; ${kinds}`,
+        `- [[w:${w.id}]] ${w.title}${w.url ? ` <${w.url}>` : ''} — ${w.days.join(', ')}; ${kinds}${w.suggested ? ` (${w.suggested} by suggested link)` : ''}`,
       );
     }
   }

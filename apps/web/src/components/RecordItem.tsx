@@ -10,11 +10,14 @@ export function RecordItem({
   record,
   showDate = false,
   projectSlug,
+  suggested,
   children,
 }: {
   record: RecordView;
   showDate?: boolean;
   projectSlug?: string | undefined;
+  /** Shown under a work item it's in only on the model's guess: its confidence (0..1). */
+  suggested?: number | undefined;
   children?: ReactNode;
 }) {
   return (
@@ -37,6 +40,11 @@ export function RecordItem({
           <Badge tone="accent">{record.noteKind}</Badge>
         )}
         {record.projectId == null && <Badge tone="warn">inbox</Badge>}
+        {suggested != null && (
+          <span title="The model placed this record in the work item; no explicit reference links it">
+            <Badge tone="warn">suggested · {Math.round(suggested * 100)}%</Badge>
+          </span>
+        )}
         {projectSlug && <span className="text-xs text-muted">#{projectSlug}</span>}
         {record.tags.map((t) => (
           <span key={t} className="text-xs text-muted">

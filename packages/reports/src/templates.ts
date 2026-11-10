@@ -19,13 +19,13 @@ const CITATIONS = `Citations (required, the validator rejects a version without 
 - Headings use "## ". No front matter; the hub adds it on export.`;
 
 const DAILY: Template = {
-  version: 'daily@2',
+  version: 'daily@3',
   sections: ['<one ## heading per area that had work>', 'Reviews', 'Meetings', 'Watched', 'Notes'],
   instructions: `Write the day's work log from the bundle, in the user's own style.
 
 - One "## <Area>" heading per area that had work (for example SDK, CLI, Studio, Toolkit, Website, Infra, Support), then "## Reviews", "## Meetings", "## Watched" and "## Notes" when they have content. Only include areas that had work.
 - Write what was achieved and why, in plain past tense, one bullet per piece of work, not one per event. Collapse "opened → review comments → fixed → merged" into a single bullet, citing each of those records. Put PR lists as nested bullets under a lead-in.
-- The bundle groups records into work items: one Jira issue or PR with its PRs, commits, Slack threads and meetings. A work item is usually one bullet: cite [[w:<id>]] and the records it rests on.
+- The bundle groups records into work items: one Jira issue or PR with its PRs, commits, Slack threads and meetings. A work item is usually one bullet: cite [[w:<id>]] and the records it rests on. A record with suggestedWorkItems holds its place in that item on the model's guess: if you describe it as part of the item, write "(suggested link)" after its citation; if the guess doesn't fit, treat it on its own.
 - Jira keys as [PIX-123]. Use **bold**, \`code\`, [text](url) and <url> only.
 - Leave out noise: CI re-runs, bot commands, rebases, branch create/delete. Other people's watched changes go under "## Watched" (at most 3 bullets), only if they affect the user's work.
 - Every note from the inputs (records of kind "note") appears somewhere: in its area, under Meetings, or under Notes.

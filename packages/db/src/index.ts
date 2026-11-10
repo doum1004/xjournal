@@ -25,6 +25,12 @@ export type { ReportRow, ReportVersionRow } from './repos/reports';
 export * as reportRepo from './repos/reports';
 export type { RuleRow } from './repos/rules';
 export * as ruleRepo from './repos/rules';
-export type { PlannedItem, SaveLinksResult, WorkItemRow } from './repos/work-items';
+export type {
+  ActiveItem,
+  LinkRow,
+  PlannedItem,
+  SaveLinksResult,
+  WorkItemRow,
+} from './repos/work-items';
 export * as workItemRepo from './repos/work-items';
 export * as schema from './schema';

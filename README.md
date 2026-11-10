@@ -75,11 +75,13 @@ The same is in the web UI under **Settings**: connect, edit, re-token, sync, bac
 
 ## The morning run
 
-The hub server runs it every day at 07:00 in the workspace time zone (`HUB_MORNING_CRON` to change): every connector syncs from its cursor, then the daily bundles of the last 14 days, and of any older day whose records changed, are rebuilt. A bundle is a day's evidence for one project under one content hash, with each connector's coverage of that day (complete, pending, failed or truncated).
+The hub server runs it every day at 07:00 in the workspace time zone (`HUB_MORNING_CRON` to change): every connector syncs from its cursor, work items are relinked, the model suggests where the remaining records belong (when a Claude API key is stored), then the daily bundles of the last 14 days, and of any older day whose records changed, are rebuilt. A bundle is a day's evidence for one project under one content hash, with each connector's coverage of that day (complete, pending, failed or truncated).
 
 ```sh
 bun run hub run                  # the same run, from the CLI
 bun run hub run --no-sync        # bundles only
+bun run hub run --no-suggest     # without AI-suggested work item links
+bun run hub suggest-links --project work   # only the suggestions
 bun run hub bundles --project work --date 2026-11-06   # one day
 ```
 

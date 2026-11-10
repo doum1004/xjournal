@@ -12,5 +12,6 @@ Short records of decisions that are expensive to reverse, and of the M0 spikes (
 | [0006](0006-bundles-sync-and-the-morning-run.md) | Pure connectors with a resumable sync runner; system-built bundles kept stale-aware by a trigger; the pg-boss morning run | Accepted (M2) |
 | [0007](0007-reports-citations-and-staleness.md) | Hub-assembled report inputs with one hash; citation tokens checked by a pure validator; computed staleness and due lists; the prototype import and the Confluence guard | Accepted (M3) |
 | [0008](0008-deterministic-work-items.md) | Work items from deterministic links (Jira keys and PR links in text; PRs fold into their issues), rebuilt by a system job with stable IDs | Accepted (M6) |
+| [0009](0009-ai-suggested-work-item-links.md) | AI-suggested work item links: the model places unlinked records of the last 14 days in active items; kept at confidence ≥ 0.6, asked once per revision, superseded by rules, marked in reports | Accepted (M6) |
 
 Format: context, decision, evidence, consequences, open items. Add a new ADR rather than rewriting an accepted one; mark the old one superseded.

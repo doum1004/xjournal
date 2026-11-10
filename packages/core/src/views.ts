@@ -32,6 +32,11 @@ export interface RecordView {
   visibility: Visibility;
   hidden: boolean;
   workItemIds: string[];
+  /**
+   * Work items in workItemIds that hold this record only on the model's suggestion
+   * (docs/adr/0009), with its confidence (0..1). Reports mark these.
+   */
+  suggestedWorkItems?: Record<string, number>;
 }
 
 export interface RevisionView {
@@ -121,6 +126,8 @@ export interface WorkItemSummary {
   days: string[];
   /** Kinds of record, with counts, e.g. {pull_request: 2, message: 1}. */
   kinds: Record<string, number>;
+  /** How many of its records are in it only on the model's suggestion. */
+  suggested?: number;
 }
 
 /** `GET /projects/{p}/days/{date}`: the day's records, grouped by work item. */

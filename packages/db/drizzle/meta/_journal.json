@@ -85,6 +85,20 @@
       "when": 1794289909577,
       "tag": "0011_work_items_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794297190371,
+      "tag": "0012_work_item_ai_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794297190960,
+      "tag": "0013_work_item_ai_checks_rls",
+      "breakpoints": true
     }
   ]
 }

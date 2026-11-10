@@ -48,6 +48,19 @@ export const workItemLinks = pgTable(
   ],
 );
 
+/**
+ * Records the model has already been asked to place in a work item, at the revision it saw
+ * (docs/adr/0009). A record is asked about again only when it changes. System only.
+ */
+export const workItemAiChecks = pgTable('work_item_ai_checks', {
+  recordId: text('record_id')
+    .primaryKey()
+    .references(() => records.id),
+  workspaceId: text('workspace_id').notNull(),
+  revisionId: text('revision_id').notNull(),
+  checkedAt: tz('checked_at').notNull().defaultNow(),
+});
+
 /** One bundle per project and date; rebuilt whenever its inputs change. */
 export const dailyBundles = pgTable(
   'daily_bundles',

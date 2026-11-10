@@ -4,7 +4,7 @@
 
 ## Context
 
-The same piece of work shows up in several sources: a Jira issue, its PRs and their reviews, commits, a Slack thread linking the PR, a meeting named after the issue (spec §3.5). Reports described each event separately, and weekly and monthly reports had no way to see that Monday's PR and Thursday's merge were the same work. M6 adds work items. This ADR covers the deterministic half; AI-suggested links come later and are stored beside these with `origin = 'ai'` and a confidence.
+The same piece of work shows up in several sources: a Jira issue, its PRs and their reviews, commits, a Slack thread linking the PR, a meeting named after the issue (spec §3.5). Reports described each event separately, and weekly and monthly reports had no way to see that Monday's PR and Thursday's merge were the same work. M6 adds work items. This ADR covers the deterministic half; AI-suggested links are stored beside these with `origin = 'ai'` and a confidence (ADR 0009).
 
 ## Decision
 
@@ -40,6 +40,6 @@ The same piece of work shows up in several sources: a Jira issue, its PRs and th
 
 ## Open items
 
-- AI-suggested links (`origin = 'ai'`, with confidence), marked as such in reports (spec §3.5).
+- AI-suggested links (`origin = 'ai'`, with confidence), marked as such in reports (spec §3.5). Done in ADR 0009.
 - Linking and unlinking by hand in the UI (`origin = 'user'`), which relinking already leaves alone.
 - Branch names, if a connector can supply them consistently.

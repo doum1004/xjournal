@@ -160,7 +160,7 @@ export function DayPage({
               </h2>
               <ul>
                 {w.records.map((r) => (
-                  <RecordItem key={r.id} record={r} />
+                  <RecordItem key={r.id} record={r} suggested={r.suggestedWorkItems?.[w.id]} />
                 ))}
               </ul>
             </section>

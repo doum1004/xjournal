@@ -892,6 +892,15 @@ describe(`RLS on ${testTarget()}`, () => {
         s.as('eve', (tx) => tx.execute(sql`update work_items set title = 'x' where id = ${w}`)),
       ).rejects.toThrow(/permission denied/);
     });
+
+    test('work_item_ai_checks: system only', async () => {
+      const r = await seedRecord(s, { owner: 'bob', project: 'Q', visibility: 'project' });
+      await s.db.execute(sql`insert into work_item_ai_checks (record_id, workspace_id, revision_id)
+        values (${r.recordId}, ${s.ws.W}, ${r.revisionId})`);
+      await expect(
+        s.as('bob', (tx) => tx.execute(sql`select * from work_item_ai_checks`)),
+      ).rejects.toThrow(/permission denied/);
+    });
   });
 
   describe('workspace isolation', () => {

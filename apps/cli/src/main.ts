@@ -61,12 +61,17 @@ Connectors:
                                      The day's report to the Confluence work log (the
                                      Confluence connector's "worklog" config). Refuses to
                                      overwrite a row edited in Confluence unless --force.
-  run [--days N] [--no-sync]         The morning run: sync every connector, relink work
-                                     items, then rebuild the bundles of the last N days
-                                     (default 14) and stale days
+  run [--days N] [--no-sync] [--no-suggest]
+                                     The morning run: sync every connector, relink work
+                                     items, ask the model where unlinked records belong
+                                     (needs a Claude API key), then rebuild the bundles of
+                                     the last N days (default 14) and stale days
   bundles [--project SLUG] [--date D]
                                      Relink work items and rebuild stale bundles (or one
                                      day's bundle)
+  suggest-links [--project SLUG] [--days N]
+                                     Ask the model where the last N days' (default 14)
+                                     unlinked records belong; saved as suggested links
   identities                         Your accounts in each source ("is this mine?")
   identity add <source> <login> [--alias A]…
                                      e.g. identity add github:github.com octocat
@@ -222,6 +227,17 @@ function printLinks(w: svc.RelinkSummary) {
   console.log(
     `work items: ${w.items} across ${w.projects} project(s), ${w.created} new; ` +
       `links +${w.linksAdded} −${w.linksRemoved}`,
+  );
+}
+
+function printSuggestions(s: svc.SuggestSummary) {
+  if (s.status === 'no_key') {
+    console.log('suggested links: skipped, no Claude API key');
+    return;
+  }
+  console.log(
+    `suggested links: ${s.linked} from ${s.asked} record(s) asked about` +
+      (s.failed ? `, ${s.failed} failed (asked again next time)` : ''),
   );
 }
 
@@ -390,11 +406,16 @@ const commands: Record<string, Handler> = {
   async run(h, args) {
     const { values } = parseArgs({
       args,
-      options: { days: { type: 'string' }, 'no-sync': { type: 'boolean' } },
+      options: {
+        days: { type: 'string' },
+        'no-sync': { type: 'boolean' },
+        'no-suggest': { type: 'boolean' },
+      },
     });
     const r = await svc.morningRun(h.db, connectorDeps(), {
       ...(values.days ? { days: Number(values.days) } : {}),
       ...(values['no-sync'] ? { skipSync: true } : {}),
+      ...(values['no-suggest'] ? { skipSuggest: true } : {}),
     });
     for (const x of r.syncs) {
       const detail =
@@ -406,6 +427,7 @@ const commands: Record<string, Handler> = {
       console.log(`sync ${x.source} [${x.status}] ${detail}`);
     }
     printLinks(r.workItems);
+    if (r.suggestions) printSuggestions(r.suggestions);
     const b = r.bundles;
     console.log(`bundles: ${b.built} built, ${b.changed} changed across ${b.projects} project(s)`);
     return r.syncs.some((x) => x.status === 'error') ? 1 : 0;
@@ -433,6 +455,26 @@ const commands: Record<string, Handler> = {
     const r = await svc.rebuildBundles(h.db, projectIds ? { projectIds } : {});
     console.log(`bundles: ${r.built} built, ${r.changed} changed across ${r.projects} project(s)`);
     return 0;
+  },
+
+  async 'suggest-links'(h, args) {
+    const { values } = parseArgs({
+      args,
+      options: { project: { type: 'string' }, days: { type: 'string' } },
+    });
+    const c = await ctx(h);
+    const projectIds = values.project ? [await projectIdFor(c, values.project)] : undefined;
+    const deps = connectorDeps();
+    const s = await svc.suggestWorkItemLinks(
+      h.db,
+      { secrets: deps.secrets, ...(deps.log ? { log: deps.log } : {}) },
+      {
+        ...(projectIds ? { projectIds } : {}),
+        ...(values.days ? { days: Number(values.days) } : {}),
+      },
+    );
+    printSuggestions(s);
+    return s.failed ? 1 : 0;
   },
 
   async publish(h, args) {
