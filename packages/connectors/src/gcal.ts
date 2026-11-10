@@ -39,7 +39,6 @@ const API = 'https://www.googleapis.com/calendar/v3';
 export const GOOGLE: OAuthProvider = {
   name: 'google',
   tokenUrl: 'https://oauth2.googleapis.com/token',
-  clientAuth: 'body',
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   scopes: ['https://www.googleapis.com/auth/calendar.events.readonly'],
   // A refresh token, and a new one even if this client was approved before.

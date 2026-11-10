@@ -94,12 +94,3 @@ export {
   type WorklogRecord,
   type WorklogScan,
 } from './worklog';
-export {
-  summaryRecord,
-  uuidPath,
-  ZOOM,
-  type ZoomConfig,
-  type ZoomSummary,
-  zoom,
-  zZoomConfig,
-} from './zoom';

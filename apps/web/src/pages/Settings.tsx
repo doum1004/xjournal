@@ -416,23 +416,6 @@ const FORMS: Record<string, FieldSpec[]> = {
       initial: 'true',
     },
   ],
-  zoom: [
-    {
-      key: 'email',
-      label: 'Zoom account',
-      kind: 'text',
-      required: true,
-      identity: true,
-      placeholder: 'you@example.com',
-    },
-    {
-      key: 'user',
-      label: 'User',
-      kind: 'text',
-      initial: 'me',
-      hint: 'me, or your email for a Server-to-Server app',
-    },
-  ],
 };
 
 const TOKEN_HINTS: Record<string, string> = {
@@ -440,7 +423,6 @@ const TOKEN_HINTS: Record<string, string> = {
   slack:
     "Your Slack app's User OAuth Token (xoxp-…), with the channels and groups read and history scopes.",
   gcal: 'The credential JSON: sign in with `hub connector add gcal --oauth client.json`, or paste {"client_id", "client_secret", "refresh_token"}.',
-  zoom: 'The credential JSON: sign in with `hub connector add zoom --oauth client.json`, or paste {"client_id", "client_secret", "refresh_token"} (or "account_id" for a Server-to-Server app).',
 };
 
 type FormValues = Record<string, string>;

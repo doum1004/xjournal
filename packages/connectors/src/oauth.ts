@@ -2,21 +2,19 @@ import { z } from 'zod';
 import { requestJson } from './http';
 import { ConnectorAuthError, type SyncInput } from './sdk';
 
-// OAuth credentials for the Google Calendar and Zoom connectors (spec §8.7, local mode: the
-// user registers their own OAuth app). The secret store holds either
+// OAuth credentials for the Google Calendar connector (spec §8.7, local mode: the user
+// registers their own OAuth app). The secret store holds either
 //   - a bare access token (fine for a test; it expires within the hour), or
-//   - JSON: { client_id, client_secret, refresh_token } for a user-level app, or, for Zoom,
-//     { client_id, client_secret, account_id } for a Server-to-Server app.
+//   - JSON: { client_id, client_secret, refresh_token }, as `hub connector add … --oauth`
+//     stores it.
 // The connector refreshes the access token when it is missing or about to expire and stores the
-// updated JSON at once (`SyncInput.saveSecret`), so the next page and the next sync reuse it.
-// Zoom replaces the refresh token on every refresh, so the new one must be kept even if the
-// rest of the page then fails.
+// updated JSON at once (`SyncInput.saveSecret`), so the next page and the next sync reuse it,
+// and a provider that rotates refresh tokens keeps working even if the rest of the page fails.
 
 const zOAuthSecret = z.object({
   client_id: z.string().min(1),
   client_secret: z.string().min(1),
   refresh_token: z.string().min(1).optional(),
-  account_id: z.string().min(1).optional(),
   access_token: z.string().min(1).optional(),
   /** When `access_token` expires, ISO 8601. */
   expires_at: z.string().optional(),
@@ -26,10 +24,6 @@ export type OAuthSecret = z.infer<typeof zOAuthSecret>;
 export interface OAuthProvider {
   name: string;
   tokenUrl: string;
-  /** How the client authenticates at the token endpoint. */
-  clientAuth: 'body' | 'basic';
-  /** Whether `account_id` (Zoom Server-to-Server) is accepted. */
-  accountCredentials?: boolean;
   /** The consent page, for signing in from the CLI (`hub connector add … --oauth`). */
   authUrl?: string;
   scopes?: string[];
@@ -100,19 +94,14 @@ export async function exchangeCode(
     code,
     redirect_uri: redirectUri,
     code_verifier: verifier,
+    client_id: client.client_id,
+    client_secret: client.client_secret,
   });
-  const headers: Record<string, string> = {};
-  if (provider.clientAuth === 'basic') {
-    headers.Authorization = `Basic ${Buffer.from(`${client.client_id}:${client.client_secret}`).toString('base64')}`;
-  } else {
-    form.set('client_id', client.client_id);
-    form.set('client_secret', client.client_secret);
-  }
   const res = await requestJson<{
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
-  }>(input, provider.tokenUrl, { method: 'POST', headers, body: form, allow: [400] });
+  }>(input, provider.tokenUrl, { method: 'POST', body: form, allow: [400] });
   if (!res?.access_token || !res.refresh_token) {
     throw new Error(
       `${provider.name}: the sign-in returned no refresh token (is the app allowed offline access?)`,
@@ -142,7 +131,7 @@ export function parseOAuthSecret(secret: string): OAuthSecret | string {
   const parsed = zOAuthSecret.safeParse(raw);
   if (!parsed.success) {
     throw new ConnectorAuthError(
-      'The stored credential needs client_id, client_secret and a refresh_token (or account_id); reconnect',
+      'The stored credential needs client_id, client_secret and refresh_token; reconnect',
     );
   }
   return parsed.data;
@@ -159,30 +148,22 @@ export async function oauthToken(
   const expires = s.expires_at ? Date.parse(s.expires_at) : 0;
   if (s.access_token && expires - MARGIN_MS > input.now.getTime()) return s.access_token;
 
-  const form = new URLSearchParams();
-  if (s.refresh_token) {
-    form.set('grant_type', 'refresh_token');
-    form.set('refresh_token', s.refresh_token);
-  } else if (s.account_id && provider.accountCredentials) {
-    form.set('grant_type', 'account_credentials');
-    form.set('account_id', s.account_id);
-  } else {
+  if (!s.refresh_token) {
     throw new ConnectorAuthError(
       `${provider.name}: the credential has no refresh_token; reconnect`,
     );
   }
-  const headers: Record<string, string> = {};
-  if (provider.clientAuth === 'basic') {
-    headers.Authorization = `Basic ${Buffer.from(`${s.client_id}:${s.client_secret}`).toString('base64')}`;
-  } else {
-    form.set('client_id', s.client_id);
-    form.set('client_secret', s.client_secret);
-  }
+  const form = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: s.refresh_token,
+    client_id: s.client_id,
+    client_secret: s.client_secret,
+  });
   const res = await requestJson<{
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
-  }>(input, provider.tokenUrl, { method: 'POST', headers, body: form, allow: [400] });
+  }>(input, provider.tokenUrl, { method: 'POST', body: form, allow: [400] });
   if (!res?.access_token) {
     // 400 invalid_grant: the refresh token was revoked or already used.
     throw new ConnectorAuthError(`${provider.name}: the token refresh was refused; reconnect`);

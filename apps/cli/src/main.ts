@@ -48,7 +48,7 @@ Connectors:
                                      --from: how far back the first sync reaches.
                                      --token-from-gh: take the token from the GitHub CLI.
                                      --oauth FILE: sign in in the browser with your OAuth
-                                     app's client file (gcal, zoom); its redirect URL is
+                                     app's client file (gcal); its redirect URL is
                                      http://localhost:8765/callback (--redirect-port N).
                                      e.g. connector add github --project work --from 2023-01-01
                                           --config '{"host":"github.com","login":"octocat",

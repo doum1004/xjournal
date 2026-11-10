@@ -18,11 +18,6 @@ import {
   type SlackConfig,
   type SyncInput,
   slack,
-  summaryRecord,
-  uuidPath,
-  ZOOM,
-  type ZoomConfig,
-  zoom,
 } from '../src';
 
 const now = new Date('2026-11-08T12:00:00Z');
@@ -96,20 +91,6 @@ describe('oauth', () => {
     expect(f.calls.length).toBe(2);
   });
 
-  test('basic client auth and account credentials (Zoom Server-to-Server)', async () => {
-    const f = fake((_url, init) => {
-      expect(header(init, 'Authorization')).toBe(`Basic ${btoa('ci:cs')}`);
-      const form = new URLSearchParams(String(init.body));
-      expect(form.get('grant_type')).toBe('account_credentials');
-      expect(form.get('account_id')).toBe('acc');
-      expect(form.get('client_secret')).toBeNull();
-      return { access_token: 's2s', expires_in: 3600 };
-    });
-    const secret = JSON.stringify({ client_id: 'ci', client_secret: 'cs', account_id: 'acc' });
-    const zoomP = { ...google, clientAuth: 'basic' as const, accountCredentials: true };
-    expect(await oauthToken(base({}, f, { secret }), zoomP)).toBe('s2s');
-  });
-
   test('a refused refresh or a malformed secret asks to reconnect', async () => {
     const f = fake(() => Response.json({ error: 'invalid_grant' }, { status: 400 }));
     const secret = JSON.stringify({ client_id: 'ci', client_secret: 'cs', refresh_token: 'x' });
@@ -156,26 +137,24 @@ describe('oauth sign-in', () => {
       access_type: 'offline',
       prompt: 'consent',
     });
-    expect(new URL(authorizeUrl(ZOOM, client, 'r', 's', 'c')).searchParams.has('scope')).toBe(
-      false,
-    );
   });
 
   test('exchanging the code builds the stored secret', async () => {
     const f = fake((_url, init) => {
-      expect(header(init, 'Authorization')).toBe(`Basic ${btoa('ci:cs')}`);
       const form = new URLSearchParams(String(init.body));
       expect(Object.fromEntries(form)).toEqual({
         grant_type: 'authorization_code',
         code: 'the-code',
         redirect_uri: 'http://localhost:8765/callback',
         code_verifier: 'v',
+        client_id: 'ci',
+        client_secret: 'cs',
       });
       return { access_token: 'a', refresh_token: 'r', expires_in: 3600 };
     });
     const secret = await exchangeCode(
       { fetch: f, now },
-      ZOOM,
+      GOOGLE,
       client,
       'the-code',
       'http://localhost:8765/callback',
@@ -468,120 +447,5 @@ describe('google calendar', () => {
     expect(p2.cursor).toEqual({ since: '2026-11-07' });
     // One token refresh for both pages: the second reused the stored access token.
     expect(f.calls.filter((c) => c.url.pathname.endsWith('/token')).length).toBe(1);
-  });
-});
-
-describe('zoom', () => {
-  const config: ZoomConfig = zoom.parseConfig({ email: 'Me@Acme.test' });
-  const summary = (uuid: string, extra: object = {}) => ({
-    meeting_uuid: uuid,
-    meeting_id: 123,
-    meeting_topic: `Topic ${uuid}`,
-    meeting_start_time: '2026-11-06T09:00:00Z',
-    meeting_end_time: '2026-11-06T09:45:00Z',
-    summary_overview: 'Agreed to ship the importer fix in 2026.6.',
-    summary_details: [{ label: 'Importer fix', summary: 'long text' }],
-    next_steps: ['Alex to backport the fix', 'Ann to update the docs'],
-    summary_doc_url: `https://docs.zoom.test/${uuid}`,
-    ...extra,
-  });
-
-  test('uuid paths', () => {
-    expect(uuidPath('abc==')).toBe('abc%3D%3D');
-    expect(uuidPath('/ab//c')).toBe('%252Fab%252F%252Fc');
-  });
-
-  test('summary records', () => {
-    expect(summaryRecord(config, summary('u1'))).toEqual({
-      externalId: 'u1/summary',
-      kind: 'meeting_summary',
-      eventTime: '2026-11-06T09:00:00.000Z',
-      title: 'Meeting summary: Topic u1',
-      url: 'https://docs.zoom.test/u1',
-      actor: 'me@acme.test',
-      summary: 'Agreed to ship the importer fix in 2026.6.',
-      payload: {
-        meetingId: 123,
-        topic: 'Topic u1',
-        topics: ['Importer fix'],
-        nextSteps: ['Alex to backport the fix', 'Ann to update the docs'],
-        minutes: 45,
-      },
-    });
-    // The user's edits win over the generated summary.
-    const edited = summaryRecord(
-      config,
-      summary('u2', { edited_summary: { next_steps: ['Edited'] } }),
-    );
-    expect(edited?.payload?.nextSteps).toEqual(['Edited']);
-    expect(
-      summaryRecord(config, summary('u3', { meeting_topic: 'Confidential: reorg' })),
-    ).toBeNull();
-    expect(
-      summaryRecord(
-        config,
-        summary('u4', { summary_overview: '', summary_details: [], next_steps: [] }),
-      ),
-    ).toBeNull();
-  });
-
-  test('lists past meetings, fetches each summary, skips ones without', async () => {
-    const f = fake((url) => {
-      if (url.pathname.endsWith('/token')) {
-        return { access_token: 'z-access', refresh_token: 'rt-next', expires_in: 3600 };
-      }
-      if (url.pathname === '/v2/users/me/meetings') {
-        expect(url.searchParams.get('type')).toBe('previous_meetings');
-        expect(url.searchParams.get('from')).toBe('2026-11-04');
-        return {
-          meetings: [
-            { uuid: 'u1', id: 1, topic: 'A', start_time: '2026-11-06T09:00:00Z' },
-            { uuid: 'u1', id: 1, topic: 'A', start_time: '2026-11-06T09:00:00Z' },
-            { uuid: '/u2', id: 2, topic: 'B', start_time: '2026-11-06T11:00:00Z' },
-            { uuid: 'u3', id: 3, topic: 'C', start_time: '2026-11-07T11:00:00Z' },
-            { uuid: 'old', id: 4, topic: 'D', start_time: '2026-10-01T11:00:00Z' },
-          ],
-        };
-      }
-      if (url.pathname === '/v2/meetings/u1/meeting_summary') return summary('u1');
-      if (url.pathname === '/v2/meetings/%252Fu2/meeting_summary') {
-        return Response.json({ code: 3322, message: 'No summary' }, { status: 400 });
-      }
-      if (url.pathname === '/v2/meetings/u3/meeting_summary') {
-        return new Response('', { status: 404 });
-      }
-      throw new Error(`unexpected ${url}`);
-    });
-    const saved: string[] = [];
-    const secret = JSON.stringify({ client_id: 'ci', client_secret: 'cs', refresh_token: 'rt' });
-    const p = await zoom.sync(
-      base(config, f, {
-        stream: 'summaries',
-        secret,
-        saveSecret: async (s) => void saved.push(s),
-      }),
-    );
-    expect(p.records.map((r) => r.externalId)).toEqual(['u1/summary']);
-    expect(p.more).toBe(false);
-    expect(p.cursor).toEqual({ since: '2026-11-07' });
-    // Zoom rotates the refresh token: the new one was stored.
-    expect(JSON.parse(saved[0] ?? '{}').refresh_token).toBe('rt-next');
-    expect(f.calls.filter((c) => c.url.pathname.includes('meeting_summary')).length).toBe(3);
-  });
-
-  test('a token without the summary scope asks to reconnect', async () => {
-    const f = fake((url) =>
-      url.pathname.endsWith('/meetings')
-        ? { meetings: [{ uuid: 'u1', id: 1, start_time: '2026-11-06T09:00:00Z' }] }
-        : Response.json(
-            { code: 4711, message: 'Invalid access token, does not contain scopes' },
-            {
-              status: 400,
-            },
-          ),
-    );
-    await expect(
-      zoom.sync(base(config, f, { stream: 'summaries', secret: 'bare' })),
-    ).rejects.toBeInstanceOf(ConnectorAuthError);
   });
 });

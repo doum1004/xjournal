@@ -61,17 +61,15 @@ Built-in kinds:
 | `confluence` | Pages you created or edited; comments | Personal access token |
 | `slack` | Messages you sent in your channels (DMs off by default), as a short summary and permalink. No `search:read` scope needed | Your Slack app's User OAuth Token (`xoxp-…`) |
 | `gcal` | Meetings you attended: at least one other attendee, not declined, no focus time, out of office or all-day events | Google OAuth: `--oauth client.json` |
-| `zoom` | AI Companion summaries (overview, topics, next steps) of the meetings you hosted | Zoom OAuth: `--oauth client.json`, or Server-to-Server JSON |
 
-For Google Calendar and Zoom, register your own OAuth app (a Google "Desktop app" client; a Zoom "General app", user-managed) with the redirect URL `http://localhost:8765/callback`, then sign in from the CLI. The refreshed tokens are kept in the keychain:
+For Google Calendar, register your own OAuth client (a Google "Desktop app" client, with the redirect URL `http://localhost:8765/callback`), then sign in from the CLI. The refreshed tokens are kept in the keychain:
 
 ```sh
 bun run hub connector add gcal --project work --config '{"account":"you@example.com"}' --oauth ~/Downloads/client_secret.json
-bun run hub connector add zoom --project work --config '{"email":"you@example.com"}' --oauth zoom-client.json
 bun run hub connector add slack --project work --config '{"workspace":"acme.slack.com","userId":"U0123ABCD","skipChannels":["random"]}'
 ```
 
-Zoom gives a meeting's summary to its host only, so summaries of meetings other people hosted still come in through an agent (`ingest_records`).
+Zoom meeting summaries come in through an agent (`ingest_records`): Zoom's API gives a summary to the meeting's host only, so a built-in connector would miss most meetings.
 
 The same is in the web UI under **Settings**: connect, edit, re-token, sync, backfill or disconnect accounts, map identities, and manage the workspace and projects.
 

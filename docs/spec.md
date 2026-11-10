@@ -375,7 +375,7 @@ These come from the working prototype (Appendix A):
 | Confluence (Server/DC) | Pages created or edited, comments | Excludes the user's own work-log pages |
 | Slack | Messages the user sent in channels; DMs off by default | Only through an approved integration. Must respect the org's scope policy (e.g. no search scope for personal apps). |
 | Google Calendar | Meetings attended (excluding declined, focus and OOO) | |
-| Zoom | AI meeting summaries: decisions and action items | Only where summaries are enabled |
+| Zoom | AI meeting summaries: decisions and action items | Only where summaries are enabled. Through the agent bridge (§8.8 tier 3), not a built-in connector: Zoom's API gives a summary to the meeting's host only |
 | Notes | Manual entry: CLI, UI or agent | Tags: meeting, event, win, blocker, learning, people, decision |
 
 ### 8.3 Identity mapping
@@ -420,7 +420,7 @@ Filters are configuration, not code.
 | Jira / Confluence Cloud | OAuth 2.0 (3LO) | API token | Separate implementation from Server/DC |
 | Slack | Slack OAuth, user token | — | Must work **without the `search:read` scope** (denied by some orgs). Read the history of the channels the user belongs to, filter to the user's messages, sync incrementally. |
 | Google Calendar / Gmail | Google OAuth (an internal app needs Workspace admin approval) | — | Gmail read is a restricted scope (heavier review) |
-| Zoom | Zoom OAuth app | — | Meeting-summary scopes; works only where summaries are enabled |
+| Zoom | Agent bridge | — | No built-in connector (host-only summary API); see §8.2 |
 | Microsoft 365 (Outlook, Teams, Calendar) | Microsoft Entra OAuth (Graph) | — | Usually needs admin consent |
 | Notes, files, email-in, webhooks | Hub credentials (§11.3) | — | See §8.8, tiers 2–3 |
 
@@ -757,7 +757,7 @@ Key relationships:
 9. Report generation through both paths (§16.1): agent via MCP, and direct via the Claude API once a key is configured
 10. Markdown export, plus the Confluence work-log publisher
 
-**Phase 2:** Slack, Calendar and Zoom connectors; bi-weekly, quarterly and yearly reports; the career log; work items with AI-suggested links; reminder suggestions delivered to external tools.
+**Phase 2:** Slack and Calendar connectors; bi-weekly, quarterly and yearly reports; the career log; work items with AI-suggested links; reminder suggestions delivered to external tools.
 
 **Phase 3:** a Personal domain instance (its own store and accounts) in hosted mode, with **shared projects**: members and roles, item visibility, audience-aware reports, invitations, and each member's agent access (§9.2–9.7). Also report links and more exporters.
 

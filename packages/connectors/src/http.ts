@@ -1,6 +1,6 @@
 import { ConnectorAuthError, ConnectorRateLimitError, type SyncInput } from './sdk';
 
-// JSON over HTTP for the OAuth connectors (Slack, Google Calendar, Zoom). Maps refused
+// JSON over HTTP for the OAuth connectors (Slack, Google Calendar). Maps refused
 // credentials to ConnectorAuthError and throttling to ConnectorRateLimitError, like the
 // Atlassian client does.
 

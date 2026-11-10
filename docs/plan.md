@@ -24,7 +24,7 @@ xjournal/
 │   ├── services/      The service layer: every operation in api.md §3, with authorization
 │   ├── auth/          Better Auth config: passkeys, invites + codes, device approval, sessions, tokens, MCP OAuth
 │   ├── connectors/    Connector SDK (api.md RecordInput) + built-ins: github, jira, confluence,
-│   │                  slack, gcal, zoom, confluence-worklog-import, prototype-import
+│   │                  slack, gcal, confluence-worklog-import, prototype-import
 │   ├── reports/       Input assembly, templates, staleness propagation, direct-path generator (Anthropic SDK)
 │   └── secrets/       Secret-store interface: OS keychain (local), managed vault (hosted)
 ├── infra/
@@ -106,7 +106,7 @@ Goal: prove the risky parts before building on them.
 
 ### Phase 2 — Wider sources and longer periods (M5–M6)
 
-- **M5:** built-in Slack (channel history, no search scope), Google Calendar and Zoom connectors; bi-weekly, quarterly and yearly reports; the career log.
+- **M5:** built-in Slack (channel history, no search scope) and Google Calendar connectors (Zoom stays on the agent bridge); bi-weekly, quarterly and yearly reports; the career log.
 - **M6:** work items with AI-suggested links; reminder suggestions delivered to Jira or Google Tasks; webhooks and file imports.
 
 ### Phase 3 — Family hub, shared (M7–M8)
@@ -125,7 +125,7 @@ Goal: prove the risky parts before building on them.
 | M2 | Built (ADR 0006). GitHub verified against the prototype's digests on real accounts; Jira and Confluence tested against recorded API shapes, waiting for a real connection |
 | M3 | Built (ADR 0007). The prototype's history imported as reports; a cited daily report written from real inputs over the API. Waiting on: a real morning run from Claude Code, and the Confluence mirror on the real work log |
 | M4 | Built. Direct generation tested with a scripted model; waiting for a Claude API key to run for real |
-| M5 | Built. Bi-weekly (from weekly reports, with plan vs. actual), quarterly and yearly reports; the career log (proposed by quarterly reports, approved and exported in the UI, `hub import career`); Slack, Google Calendar and Zoom connectors with OAuth sign-in from the CLI. The connectors are tested against recorded API shapes, waiting for real connections. Zoom covers meetings you hosted (the API's limit); others' summaries stay on the agent bridge |
+| M5 | Built. Bi-weekly (from weekly reports, with plan vs. actual), quarterly and yearly reports; the career log (proposed by quarterly reports, approved and exported in the UI, `hub import career`); Slack and Google Calendar connectors, with OAuth sign-in from the CLI; tested against recorded API shapes, waiting for real connections. No Zoom connector: its API gives summaries to the host only, so Zoom summaries stay on the agent bridge |
 
 ## 3. Risks and how they're handled
 
