@@ -150,7 +150,7 @@ Each row is one service operation. Minimum role is per project. "Owner user" mea
 | Operation | REST | Min. role | MCP |
 |---|---|---|---|
 | Days in a range | `GET /projects/{p}/days?from=&to=` → `[{date, recordCount, mineCount, bundleHash, dirty, daily: {reportId, status, versionId} \| null, coverage}]` | viewer | |
-| One day | `GET /projects/{p}/days/{date}` → `{bundle, workItems: [{id, title, records: RecordView[]}], unlinked: RecordView[], daily: ReportVersionView \| null, coverage}` | viewer (records filtered by visibility) | `get_day` |
+| One day | `GET /projects/{p}/days/{date}` → `{bundle, workItems: [{id, key, title, url, records: RecordView[]}], unlinked: RecordView[], daily: ReportVersionView \| null, coverage}` (a record in two work items appears in both; `unlinked` holds the rest) | viewer (records filtered by visibility) | `get_day` |
 | Rebuild a day's bundle | `POST /projects/{p}/days/{date}/rebuild` → `{date, hash, changed, items}` | contributor | |
 | Status | `GET /status?projectId=` → `{projects, due: [{kind, date, projectId, reason: 'missing' \| 'stale'}], missingDays, staleReports, inboxCount, connectors}` (`due`: what a morning run writes, oldest first: missing weekday dailies, stale reports, and the last finished week, two weeks, month, quarter and year once their input reports exist) | viewer | `get_status` |
 | Stats | `GET /stats?projectId=&from=&to=&metrics=` → `{metrics: [{metric, value, query}]}` (deterministic, spec §5.8) | viewer | `get_stats` |
@@ -238,8 +238,12 @@ interface ReportInputs {
   guidance: { id: Id; versionId: Id; scope: string; text: string }[];   // most specific first
   // daily: the bundle, filtered to items visible to EVERY audience member
   bundles?: { date: IsoDate; hash: string; coverage: Coverage;
-              workItems: { id: Id; title: string; records: RecordView[] }[];
+              workItems: { id: Id; key: string | null; title: string; url: string | null;
+                           records: RecordView[] }[];
               unlinked: RecordView[] }[];
+  // weekly, bi-weekly and monthly: the work items with records in the period (ADR 0008)
+  workItems?: { id: Id; key: string | null; title: string; url: string | null;
+                days: IsoDate[]; kinds: Record<string, number> }[];
   // weekly and up: the constituent reports (spec §5): daily for weekly and monthly, weekly for
   // bi-weekly, monthly for quarterly and yearly
   inputReports?: { versionId: Id; kind: ReportKind; period: {...}; bodyMd: string; status: string }[];

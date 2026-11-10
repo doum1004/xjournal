@@ -25,6 +25,7 @@ import {
   reportRepo,
   type Tx,
   withSystem,
+  workItemRepo,
 } from '@xjournal/db';
 import {
   inputKindOf,
@@ -45,6 +46,7 @@ import { asCaller, type Ctx } from './context';
 import { conflict, forbidden, isUniqueViolation, notFound, parse, ServiceError } from './errors';
 import { atLeast, workspaceTimeZone } from './projects';
 import { toViews } from './records';
+import { groupByWorkItem, relinkWorkItems, summarize } from './workitems';
 
 // Reports (spec §4 Layer 3, §5–6; api.md §3.5, §4): resolve the logical report, assemble its
 // inputs filtered to what every reader may see, validate and store versions, and propagate
@@ -158,12 +160,16 @@ interface Built {
   previous: ReportVersionRow | null;
 }
 
-/** Bring the bundles of a report's period up to date first (system), so inputs are fresh. */
+/**
+ * Bring the bundles of a report's period up to date first (system), and the project's work
+ * items, so inputs are fresh even for records added since the morning run.
+ */
 async function freshenBundles(db: HubDb, report: ReportRow, now: Date) {
   const [p] = (await withSystem(db, (tx) => bundleRepo.allProjects(tx))).filter(
     (x) => x.id === report.projectId,
   );
   if (!p) return;
+  await relinkWorkItems(db, { projectIds: [p.id], now });
   const today = localDate(now, p.timeZone);
   const stale = new Set(await withSystem(db, (tx) => bundleRepo.staleDays(tx, p.id)));
   for (let d = report.periodStart; d < report.periodEndExcl && d <= today; d = addDays(d, 1)) {
@@ -188,6 +194,8 @@ async function buildInputs(tx: Tx, ctx: Ctx, report: ReportRow, now: Date): Prom
     await reportRepo.recordsInRange(tx, projectId, report.periodStart, report.periodEndExcl),
   );
   const views = await toViews(tx, ctx, rows);
+  // Work items with records in the period, as far as the audience sees them (spec §3.5).
+  const grouped = await groupByWorkItem(tx, views);
   const known: KnownRefs = {
     revisions: new Map(
       rows.map((r) => [
@@ -196,7 +204,7 @@ async function buildInputs(tx: Tx, ctx: Ctx, report: ReportRow, now: Date): Prom
       ]),
     ),
     versions: new Map(),
-    workItems: new Set(),
+    workItems: new Set(grouped.workItems.map((g) => g.id)),
     stats: new Set(),
     period: { start: report.periodStart, endExcl: report.periodEndExcl },
   };
@@ -236,11 +244,15 @@ async function buildInputs(tx: Tx, ctx: Ctx, report: ReportRow, now: Date): Prom
         date: report.periodStart,
         hash: b?.contentHash ?? '',
         coverage: (b?.coverage ?? {}) as Coverage,
-        workItems: [],
-        unlinked: views,
+        workItems: grouped.workItems,
+        unlinked: grouped.unlinked,
       },
     ];
   } else {
+    // Quarterly and yearly reports work from monthly reports; a quarter's items are too many.
+    if (SUMMARIZE_ITEMS.has(report.kind) && grouped.workItems.length) {
+      inputs.workItems = summarize(grouped.workItems);
+    }
     const fromKind = inputKindOf(report.kind) as ReportKind;
     const dailies = (
       await reportRepo.reportsInRange(tx, {
@@ -376,6 +388,10 @@ async function buildInputs(tx: Tx, ctx: Ctx, report: ReportRow, now: Date): Prom
     inputs: inputRows.map((i) => [i.inputType, i.inputId, i.inputHash]),
     // Revisions the report may cite: a re-routed or edited record changes these too.
     revisions: [...known.revisions.keys()].sort(),
+    // How those revisions group into work items: a relink changes what may be cited.
+    workItems: grouped.workItems
+      .map((g) => [g.id, g.records.map((r) => r.revisionId).sort()] as const)
+      .sort(([a], [b]) => a.localeCompare(b)),
   });
   return { inputs, known, inputRows, guidanceHash, statRows, previous };
 }
@@ -416,6 +432,9 @@ export const zSubmission = z.object({
     })
     .default({ path: 'agent', client: 'unknown' }),
 });
+
+/** Report kinds whose inputs list the period's work items. */
+const SUMMARIZE_ITEMS = new Set<ReportKind>(['weekly', 'biweekly', 'monthly']);
 
 const REF_TYPE = { r: 'record_revision', w: 'work_item', v: 'report_version', s: 'stat' } as const;
 
@@ -536,6 +555,14 @@ async function versionView(tx: Tx, r: ReportRow, v: ReportVersionRow): Promise<R
   const stats = new Map(
     (await reportRepo.statsOfVersion(tx, v.id)).map((s) => [s.metric, s.value]),
   );
+  const items = new Map(
+    (
+      await workItemRepo.itemsByIds(
+        tx,
+        refs.filter((x) => x.refType === 'work_item').map((x) => x.refId),
+      )
+    ).map((w) => [w.id, w]),
+  );
   const citations: CitationView[] = refs.map((x) => {
     if (x.refType === 'record_revision') {
       const t = titles.get(x.refId);
@@ -554,6 +581,16 @@ async function versionView(tx: Tx, r: ReportRow, v: ReportVersionRow): Promise<R
         id: x.refId,
         title: `${x.refId} = ${JSON.stringify(stats.get(x.refId) ?? null)}`,
         url: null,
+      };
+    }
+    if (x.refType === 'work_item') {
+      const w = items.get(x.refId);
+      return {
+        anchor: x.anchor,
+        type: x.refType,
+        id: x.refId,
+        title: w?.title ?? null,
+        url: w?.url ?? null,
       };
     }
     return { anchor: x.anchor, type: x.refType, id: x.refId, title: null, url: null };

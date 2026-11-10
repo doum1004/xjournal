@@ -401,10 +401,12 @@ create table work_items (
   id               text primary key,
   workspace_id     text not null references workspaces(id),
   project_id       text references projects(id),
-  key              text,                       -- e.g. 'PROJ-9472' when anchored on an issue
+  key              text,                       -- 'PROJ-9472' (Jira issue) or 'owner/repo#12' (PR)
   title            text not null,
+  url              text,                       -- the anchor in its source
   created_at       timestamptz not null default now(),
-  updated_at       timestamptz not null default now()
+  updated_at       timestamptz not null default now(),
+  unique (project_id, key)                     -- a rebuild keeps the ID, which reports cite
 );
 
 create table work_item_links (
@@ -416,6 +418,7 @@ create table work_item_links (
   created_at       timestamptz not null default now(),
   primary key (work_item_id, record_id)
 );
+create index work_item_links_record_idx on work_item_links (record_id);
 
 -- One bundle per project and date; rebuilt whenever its inputs change.
 create table daily_bundles (
@@ -437,6 +440,8 @@ create table bundle_items (
   primary key (bundle_id, record_revision_id)
 );
 ```
+
+**Work items** (docs/adr/0008) are rebuilt by a system job (`relinkWorkItems`): in the morning run before the bundles, and before report inputs are assembled. It replaces only `origin = 'rule'` links. `hub_app` only reads them: a link is visible when its record is, and an item when the caller is a project member who can see at least one of its links. The grouping isn't part of a bundle's hash.
 
 A bundle covers **every** record of its project and date, regardless of visibility. Visibility is applied when a report's inputs are chosen for its audience (§7).
 

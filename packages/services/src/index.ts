@@ -112,4 +112,13 @@ export {
   type SyncResult,
   syncConnector,
 } from './sync';
+export {
+  describeIssue,
+  groupByWorkItem,
+  type LinkInput,
+  planWorkItems,
+  type RelinkSummary,
+  relinkWorkItems,
+  textAnchors,
+} from './workitems';
 export { claudeWriter, DEFAULT_MODEL, type ReportWriter, type WriterMessage } from './writer';

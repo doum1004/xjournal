@@ -101,12 +101,36 @@ export interface DaySummary {
   coverage: Coverage;
 }
 
-/** `GET /projects/{p}/days/{date}`. Work items arrive in Phase 2, so every record is unlinked. */
+/** A work item (spec §3.5) and its records in view: the day's, or the report's inputs'. */
+export interface WorkItemGroup {
+  id: string;
+  /** The anchor: a Jira key ('PIX-123') or a pull request ('owner/repo#12'). */
+  key: string | null;
+  title: string;
+  url: string | null;
+  records: RecordView[];
+}
+
+/** A work item active in a report's period, for weekly and longer reports. */
+export interface WorkItemSummary {
+  id: string;
+  key: string | null;
+  title: string;
+  url: string | null;
+  /** Dates in the period with a record of the item. */
+  days: string[];
+  /** Kinds of record, with counts, e.g. {pull_request: 2, message: 1}. */
+  kinds: Record<string, number>;
+}
+
+/** `GET /projects/{p}/days/{date}`: the day's records, grouped by work item. */
 export interface DayView {
   date: string;
   projectId: string;
   bundle: BundleView | null;
-  workItems: { id: string; title: string; records: RecordView[] }[];
+  /** A record in several items appears in each. */
+  workItems: WorkItemGroup[];
+  /** Records in no work item. */
   unlinked: RecordView[];
   daily: { reportId: string; status: string; versionId: string | null } | null;
   coverage: Coverage;
@@ -221,9 +245,11 @@ export interface ReportInputs {
     date: string;
     hash: string;
     coverage: Coverage;
-    workItems: { id: string; title: string; records: RecordView[] }[];
+    workItems: WorkItemGroup[];
     unlinked: RecordView[];
   }[];
+  /** Weekly and longer: the work items with records in the period. Cite them as [[w:<id>]]. */
+  workItems?: WorkItemSummary[];
   inputReports?: {
     versionId: string;
     kind: ReportKind;

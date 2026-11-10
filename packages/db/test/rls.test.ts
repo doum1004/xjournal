@@ -849,6 +849,51 @@ describe(`RLS on ${testTarget()}`, () => {
     });
   });
 
+  describe('work items', () => {
+    /** A work item in a project linking the given records (as superuser). */
+    async function seedItem(project: keyof Seed['p'], recordIds: string[]) {
+      const id = newId();
+      await s.db.execute(sql`insert into work_items (id, workspace_id, project_id, key, title)
+        values (${id}, ${s.ws.W}, ${s.p[project]}, ${id}, 'PIX-1 Fix')`);
+      for (const rid of recordIds) {
+        await s.db.execute(sql`insert into work_item_links (work_item_id, record_id, workspace_id, origin)
+          values (${id}, ${rid}, ${s.ws.W}, 'rule')`);
+      }
+      return id;
+    }
+
+    test('work_item_links_select: only links of records the caller can see', async () => {
+      cover('work_item_links_select');
+      const shared = await seedRecord(s, { owner: 'bob', project: 'Q', visibility: 'project' });
+      const priv = await seedRecord(s, { owner: 'bob', project: 'Q', visibility: 'private' });
+      const w = await seedItem('Q', [shared.recordId, priv.recordId]);
+      const count = (who: keyof Seed['u']) =>
+        s.as(who, (tx) => visible(tx, 'work_item_links', `work_item_id = '${w}'`));
+      expect(await count('bob')).toBe(2);
+      expect(await count('eve')).toBe(1); // bob's private record stays hidden
+      expect(await count('carol')).toBe(0); // not in Q
+      await expect(
+        s.as('bob', (tx) => tx.execute(sql`delete from work_item_links where work_item_id = ${w}`)),
+      ).rejects.toThrow(/permission denied/);
+    });
+
+    test('work_items_select: members who can see one of its links; no writes', async () => {
+      cover('work_items_select');
+      const priv = await seedRecord(s, { owner: 'bob', project: 'Q', visibility: 'private' });
+      const w = await seedItem('Q', [priv.recordId]);
+      const empty = await seedItem('Q', []);
+      const sees = (who: keyof Seed['u'], id: string) =>
+        s.as(who, (tx) => visible(tx, 'work_items', `id = '${id}'`));
+      expect(await sees('bob', w)).toBe(1);
+      expect(await sees('eve', w)).toBe(0); // a member, but every link is hidden from her
+      expect(await sees('carol', w)).toBe(0);
+      expect(await sees('bob', empty)).toBe(0);
+      await expect(
+        s.as('eve', (tx) => tx.execute(sql`update work_items set title = 'x' where id = ${w}`)),
+      ).rejects.toThrow(/permission denied/);
+    });
+  });
+
   describe('workspace isolation', () => {
     test('a user in another workspace context sees nothing of W', async () => {
       await seedRecord(s, {

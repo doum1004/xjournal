@@ -15,7 +15,14 @@ import {
   zRouteInput,
   zSearchQuery,
 } from '@xjournal/core';
-import { type ProjectRow, projectRepo, type RecordRow, recordRepo, type Tx } from '@xjournal/db';
+import {
+  type ProjectRow,
+  projectRepo,
+  type RecordRow,
+  recordRepo,
+  type Tx,
+  workItemRepo,
+} from '@xjournal/db';
 import { asCaller, type Ctx } from './context';
 import { forbidden, notFound, parse, ServiceError } from './errors';
 import { atLeast, isRlsViolation, workspaceTimeZone } from './projects';
@@ -43,6 +50,10 @@ export async function toViews(tx: Tx, ctx: Ctx, rows: RecordRow[]): Promise<Reco
   );
   const tags = await recordRepo.tagsFor(tx, ids);
   const names = await projectRepo.displayNames(tx, [...new Set(rows.map((r) => r.ownerUserId))]);
+  const items = new Map<string, string[]>();
+  for (const l of await workItemRepo.linksOf(tx, ids)) {
+    items.set(l.recordId, [...(items.get(l.recordId) ?? []), l.workItemId]);
+  }
   return rows.map((r) => ({
     id: r.id,
     revisionId: r.currentRevisionId,
@@ -65,7 +76,7 @@ export async function toViews(tx: Tx, ctx: Ctx, rows: RecordRow[]): Promise<Reco
     isMine: r.ownerUserId === ctx.actor.userId,
     visibility: r.visibility,
     hidden: r.hiddenAt != null,
-    workItemIds: [],
+    workItemIds: (items.get(r.id) ?? []).sort(),
   }));
 }
 

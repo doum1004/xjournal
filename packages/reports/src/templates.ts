@@ -19,12 +19,13 @@ const CITATIONS = `Citations (required, the validator rejects a version without 
 - Headings use "## ". No front matter; the hub adds it on export.`;
 
 const DAILY: Template = {
-  version: 'daily@1',
+  version: 'daily@2',
   sections: ['<one ## heading per area that had work>', 'Reviews', 'Meetings', 'Watched', 'Notes'],
   instructions: `Write the day's work log from the bundle, in the user's own style.
 
 - One "## <Area>" heading per area that had work (for example SDK, CLI, Studio, Toolkit, Website, Infra, Support), then "## Reviews", "## Meetings", "## Watched" and "## Notes" when they have content. Only include areas that had work.
 - Write what was achieved and why, in plain past tense, one bullet per piece of work, not one per event. Collapse "opened → review comments → fixed → merged" into a single bullet, citing each of those records. Put PR lists as nested bullets under a lead-in.
+- The bundle groups records into work items: one Jira issue or PR with its PRs, commits, Slack threads and meetings. A work item is usually one bullet: cite [[w:<id>]] and the records it rests on.
 - Jira keys as [PIX-123]. Use **bold**, \`code\`, [text](url) and <url> only.
 - Leave out noise: CI re-runs, bot commands, rebases, branch create/delete. Other people's watched changes go under "## Watched" (at most 3 bullets), only if they affect the user's work.
 - Every note from the inputs (records of kind "note") appears somewhere: in its area, under Meetings, or under Notes.
@@ -35,7 +36,7 @@ ${CITATIONS}`,
 };
 
 const WEEKLY: Template = {
-  version: 'weekly@1',
+  version: 'weekly@2',
   sections: [
     'TL;DR',
     'Shipped',
@@ -50,6 +51,7 @@ const WEEKLY: Template = {
 Sections: "## TL;DR" (2–3 lines) · "## Shipped" (merged or released, with links) · "## Progress by area" · "## Reviews & collaboration" · "## Meetings & events" · "## Blockers / risks" · "## Next week" (3–5 items).
 
 - Cite the daily reports' statements: [[v:<versionId>#<anchor>]]. You may also cite records directly.
+- workItems lists each piece of work active this week, with the days it was touched. Describe a piece of work once, even when it ran over several days: one bullet citing [[w:<id>]] and the daily statements about it.
 - Days in gaps.missingDays have no daily report: say so under Blockers / risks if it matters, and don't invent their content.
 - "Next week" items are plans, not facts: cite the evidence they follow from (an open PR, a note).
 
@@ -57,7 +59,7 @@ ${CITATIONS}`,
 };
 
 const MONTHLY: Template = {
-  version: 'monthly@1',
+  version: 'monthly@2',
   sections: [
     'TL;DR',
     'Highlights',
@@ -73,18 +75,19 @@ const MONTHLY: Template = {
 Sections: "## TL;DR" · "## Highlights" (top 3–5, each with its impact) · "## By area" · "## Numbers" (from stats only) · "## Collaboration & people" (help given and received, feedback) · "## Learnings" · "## Gaps" (days with no report from gaps.missingDays; things the stats show that the reports missed) · "## Next month".
 
 - Write "## Numbers" as bullets, each citing its metric: "- PRs merged: 42 [[s:prs_merged]]".
+- workItems lists each piece of work active this month, with the days it was touched. Write about the work, not the days: one statement per piece of work, citing [[w:<id>]] and the daily statements about it.
 
 ${CITATIONS}`,
 };
 
 const BIWEEKLY: Template = {
-  version: 'biweekly@2',
+  version: 'biweekly@3',
   sections: [...WEEKLY.sections.slice(0, -1), 'Plan vs. actual', 'Next two weeks'],
   instructions: `Write the bi-weekly review from its two weekly reports (inputReports) and stats.
 
 Sections: "## TL;DR" (2–3 lines) · "## Shipped" · "## Progress by area" · "## Reviews & collaboration" · "## Meetings & events" · "## Blockers / risks" · "## Plan vs. actual" · "## Next two weeks" (3–5 items).
 
-- Cite the weekly reports' statements: [[v:<versionId>#<anchor>]].
+- Cite the weekly reports' statements: [[v:<versionId>#<anchor>]]. workItems lists each piece of work active in the two weeks; cite [[w:<id>]] when a statement is about one.
 - "## Plan vs. actual": take the "Next" items of the previous bi-weekly (in \`previousPeriod\`) and mark each ✅ done, 🟡 partly or ❌ not done, with a reason. Cite the plan item ([[v:<previousPeriod.versionId>#<anchor>]]) and the evidence of what happened. With no previousPeriod, write one line saying there was no earlier plan, citing a statement it follows from, or leave the section out.
 - Weeks in gaps.missingInputs have no weekly report: say so under Blockers / risks, and don't invent their content.
 

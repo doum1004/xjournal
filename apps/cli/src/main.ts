@@ -61,10 +61,12 @@ Connectors:
                                      The day's report to the Confluence work log (the
                                      Confluence connector's "worklog" config). Refuses to
                                      overwrite a row edited in Confluence unless --force.
-  run [--days N] [--no-sync]         The morning run: sync every connector, then rebuild the
-                                     bundles of the last N days (default 14) and stale days
+  run [--days N] [--no-sync]         The morning run: sync every connector, relink work
+                                     items, then rebuild the bundles of the last N days
+                                     (default 14) and stale days
   bundles [--project SLUG] [--date D]
-                                     Rebuild stale bundles (or one day's)
+                                     Relink work items and rebuild stale bundles (or one
+                                     day's bundle)
   identities                         Your accounts in each source ("is this mine?")
   identity add <source> <login> [--alias A]…
                                      e.g. identity add github:github.com octocat
@@ -214,6 +216,13 @@ function ghToken(host: string, login: string): string {
     );
   }
   return token;
+}
+
+function printLinks(w: svc.RelinkSummary) {
+  console.log(
+    `work items: ${w.items} across ${w.projects} project(s), ${w.created} new; ` +
+      `links +${w.linksAdded} −${w.linksRemoved}`,
+  );
 }
 
 const ago = (iso: string | null) => (iso ? iso.replace('T', ' ').slice(0, 16) : 'never');
@@ -396,6 +405,7 @@ const commands: Record<string, Handler> = {
           : x.error;
       console.log(`sync ${x.source} [${x.status}] ${detail}`);
     }
+    printLinks(r.workItems);
     const b = r.bundles;
     console.log(`bundles: ${b.built} built, ${b.changed} changed across ${b.projects} project(s)`);
     return r.syncs.some((x) => x.status === 'error') ? 1 : 0;
@@ -419,6 +429,7 @@ const commands: Record<string, Handler> = {
       return 0;
     }
     const projectIds = values.project ? [await projectIdFor(c, values.project)] : undefined;
+    printLinks(await svc.relinkWorkItems(h.db, projectIds ? { projectIds } : {}));
     const r = await svc.rebuildBundles(h.db, projectIds ? { projectIds } : {});
     console.log(`bundles: ${r.built} built, ${r.changed} changed across ${r.projects} project(s)`);
     return 0;

@@ -4,10 +4,12 @@ import type { ConnectorDeps } from './connectors';
 import { messageOf } from './connectors';
 import { markStaleReports } from './reports';
 import { type SyncResult, syncConnector } from './sync';
+import { type RelinkSummary, relinkWorkItems } from './workitems';
 
 // The morning run (spec §5.1, Flow A steps 2–3): sync every connector incrementally, then
-// rebuild the bundles of the catch-up window and of every stale day. Report generation
-// (step 4) joins it in M3. One run at a time: the scheduler enqueues it with a singleton key.
+// relink work items (spec §3.5), then rebuild the bundles of the catch-up window and of every
+// stale day. Report generation (step 4) joins it in M3. One run at a time: the scheduler
+// enqueues it with a singleton key.
 
 export interface MorningRunOptions {
   now?: Date;
@@ -25,6 +27,7 @@ export interface MorningRunResult {
     | { connectorAccountId: string; source: string; status: 'error'; error: string }
   )[];
   bundles: RebuildSummary;
+  workItems: RelinkSummary;
   /** Reports marked stale by this run. */
   staleReports: number;
 }
@@ -57,6 +60,7 @@ export async function morningRun(
     }
   }
 
+  const workItems = await relinkWorkItems(db, { now });
   const bundles = await rebuildBundles(db, { now, ...(opts.days ? { days: opts.days } : {}) });
   // Reports built on changed bundles are behind now (schema.md §7).
   const staleReports = await markStaleReports(db);
@@ -65,6 +69,7 @@ export async function morningRun(
     finishedAt: new Date().toISOString(),
     syncs,
     bundles,
+    workItems,
     staleReports,
   };
 }

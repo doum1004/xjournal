@@ -1,4 +1,4 @@
-import type { ReportInputs, ReportVersionView } from '@xjournal/core';
+import type { RecordView, ReportInputs, ReportVersionView } from '@xjournal/core';
 import type { SecretStore } from '@xjournal/secrets';
 import { z } from 'zod';
 import type { Ctx } from './context';
@@ -64,17 +64,35 @@ function renderInputs(i: ReportInputs, instructions?: string): string {
   }
   if (instructions) out.push('', '## Extra instructions for this version', instructions);
   for (const b of i.bundles ?? []) {
-    out.push('', `## Evidence for ${b.date} (cite as [[r:<id>]])`);
-    for (const r of b.unlinked) {
+    out.push('', `## Evidence for ${b.date} (cite as [[r:<id>]], work items as [[w:<id>]])`);
+    const line = (r: RecordView) => {
       const summary = r.summary ? ` — ${r.summary.replace(/\s+/g, ' ').slice(0, 300)}` : '';
       const url = r.url ? ` <${r.url}>` : '';
-      out.push(
-        `- [[r:${r.revisionId}]] ${r.kind}${r.isMine ? '' : ' (someone else)'}: ${r.title}${summary}${url}`,
-      );
+      return `- [[r:${r.revisionId}]] ${r.kind}${r.isMine ? '' : ' (someone else)'}: ${r.title}${summary}${url}`;
+    };
+    for (const w of b.workItems) {
+      out.push('', `### Work item [[w:${w.id}]] ${w.title}${w.url ? ` <${w.url}>` : ''}`);
+      for (const r of w.records) out.push(line(r));
     }
+    if (b.workItems.length && b.unlinked.length) out.push('', '### Other records');
+    for (const r of b.unlinked) out.push(line(r));
     const cov = Object.values(b.coverage).filter((c) => c.status !== 'complete');
     if (cov.length)
       out.push('', `Coverage gaps: ${cov.map((c) => `${c.source} ${c.status}`).join('; ')}`);
+  }
+  if (i.workItems?.length) {
+    out.push(
+      '',
+      '## Work items active in the period (each is one piece of work across sources; cite as [[w:<id>]])',
+    );
+    for (const w of i.workItems) {
+      const kinds = Object.entries(w.kinds)
+        .map(([k, n]) => `${n} ${k}`)
+        .join(', ');
+      out.push(
+        `- [[w:${w.id}]] ${w.title}${w.url ? ` <${w.url}>` : ''} — ${w.days.join(', ')}; ${kinds}`,
+      );
+    }
   }
   for (const r of i.inputReports ?? []) {
     out.push(

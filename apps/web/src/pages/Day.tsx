@@ -9,7 +9,12 @@ import { addDays, longDate, today } from '../dates';
 import { useProject } from '../project';
 
 // Day view (plan.md M1–M2): one project's evidence for one date, its bundle and each
-// connector's coverage of the day. The daily report joins it in M3.
+// connector's coverage of the day. The daily report joins it in M3; work items (spec §3.5)
+// group the records in M6.
+
+/** Distinct records of the day: one in several work items is listed under each. */
+const recordCount = (day: DayView) =>
+  new Set([...day.workItems.flatMap((w) => w.records), ...day.unlinked].map((r) => r.id)).size;
 
 const COVERAGE_TONE = {
   complete: 'accent',
@@ -31,7 +36,7 @@ function BundleStrip({ day, projectId }: { day: DayView; projectId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['day'] }),
   });
   const coverage = Object.entries(day.coverage);
-  if (!day.bundle && coverage.length === 0 && day.unlinked.length === 0) return null;
+  if (!day.bundle && coverage.length === 0 && recordCount(day) === 0) return null;
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted">
       {day.bundle ? (
@@ -91,6 +96,8 @@ export function DayPage({
 
   const prev = addDays(date, -1);
   const next = addDays(date, 1);
+  const count = day.data ? recordCount(day.data) : 0;
+  const items = day.data?.workItems ?? [];
   const records = day.data?.unlinked ?? [];
 
   return (
@@ -99,7 +106,10 @@ export function DayPage({
         <div>
           <h1 className="text-lg font-semibold">{longDate(date)}</h1>
           <p className="text-sm text-muted">
-            #{project.slug} · {day.isPending ? 'loading…' : `${records.length} records`}
+            #{project.slug} ·{' '}
+            {day.isPending
+              ? 'loading…'
+              : `${count} records${items.length ? ` · ${items.length} work items` : ''}`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -127,19 +137,43 @@ export function DayPage({
       {day.data && <BundleStrip day={day.data} projectId={project.id} />}
       {day.data?.daily?.versionId ? (
         <DailyReport versionId={day.data.daily.versionId} />
-      ) : day.data && day.data.unlinked.length > 0 ? (
+      ) : day.data && count > 0 ? (
         <WriteDaily projectId={project.id} date={date} />
       ) : null}
       {day.error ? (
         <ErrorNote error={day.error} />
-      ) : records.length === 0 && !day.isPending ? (
+      ) : count === 0 && !day.isPending ? (
         <Empty>Nothing recorded for this day.</Empty>
       ) : (
-        <ul>
-          {records.map((r) => (
-            <RecordItem key={r.id} record={r} />
+        <>
+          {items.map((w) => (
+            <section key={w.id} className="mb-3 rounded-md border border-line px-3 pt-2">
+              <h2 className="flex flex-wrap items-baseline gap-2 text-sm font-semibold">
+                {w.url ? (
+                  <a href={w.url} className="hover:text-accent hover:underline">
+                    {w.title}
+                  </a>
+                ) : (
+                  w.title
+                )}
+                <Badge>{w.records.length} records</Badge>
+              </h2>
+              <ul>
+                {w.records.map((r) => (
+                  <RecordItem key={r.id} record={r} />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+          {items.length > 0 && records.length > 0 && (
+            <h2 className="mt-4 text-sm font-semibold text-muted">Other records</h2>
+          )}
+          <ul>
+            {records.map((r) => (
+              <RecordItem key={r.id} record={r} />
+            ))}
+          </ul>
+        </>
       )}
     </Panel>
   );

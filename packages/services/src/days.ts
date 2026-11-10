@@ -3,6 +3,7 @@ import { bundleRepo, projectRepo, recordRepo, reportRepo, type Tx } from '@xjour
 import { asCaller, type Ctx } from './context';
 import { notFound, parse, ServiceError } from './errors';
 import { toViews } from './records';
+import { groupByWorkItem } from './workitems';
 
 // Days (api.md §3.4): a day's records, its bundle (hash, staleness, coverage) and, from M3,
 // its daily report.
@@ -63,6 +64,7 @@ export async function getDay(ctx: Ctx, projectId: string, date: string): Promise
     const rows = await recordRepo.recordsOnDay(tx, projectId, date);
     const b = await bundleRepo.getBundle(tx, projectId, date);
     const items = b ? await bundleRepo.bundleItemCount(tx, [b.id]) : new Map<string, number>();
+    const grouped = await groupByWorkItem(tx, await toViews(tx, ctx, rows));
     return {
       date,
       projectId,
@@ -75,8 +77,7 @@ export async function getDay(ctx: Ctx, projectId: string, date: string): Promise
             itemCount: items.get(b.id) ?? 0,
           }
         : null,
-      workItems: [],
-      unlinked: await toViews(tx, ctx, rows),
+      ...grouped,
       daily: dailyOf(
         (
           await reportRepo.dailyReportDates(tx, {

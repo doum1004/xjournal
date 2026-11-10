@@ -109,7 +109,7 @@ describe('bi-weekly', () => {
     expect(b.inputs.inputReports?.map((x) => x.kind)).toEqual(['weekly']);
     expect(b.inputs.gaps.missingInputs?.map((m) => m.start)).toEqual(['2026-10-12']);
     expect(b.inputs.previousPeriod).toBeUndefined();
-    expect(b.inputs.template.version).toBe('biweekly@2');
+    expect(b.inputs.template.version).toBe('biweekly@3');
   });
 
   test('gets the previous bi-weekly for plan vs. actual, and may cite it', async () => {
